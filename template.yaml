@@ -11,6 +11,7 @@ Globals:
     Environment:
       Variables:
         TABLE_NAME: !Ref PurchaseApprovalTable
+        DYNAMODB_ENDPOINT: ''
 
 Resources:
   PurchaseApi:
