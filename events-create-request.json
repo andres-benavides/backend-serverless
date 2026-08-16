@@ -1,0 +1,15 @@
+{
+  "title": "Compra de portátiles",
+  "description": "Compra de tres equipos para el equipo de desarrollo",
+  "amount": 15000000,
+  "requester": {
+    "id": "user-001",
+    "name": "Solicitante Demo",
+    "email": "requester@example.com"
+  },
+  "approvers": [
+    { "role": "Manager", "name": "Approver One", "email": "one@example.com" },
+    { "role": "Finance", "name": "Approver Two", "email": "two@example.com" },
+    { "role": "Director", "name": "Approver Three", "email": "three@example.com" }
+  ]
+}

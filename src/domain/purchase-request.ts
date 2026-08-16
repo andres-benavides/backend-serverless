@@ -1,0 +1,57 @@
+export type RequestStatus = 'PENDING' | 'REJECTED' | 'COMPLETED';
+export type ApprovalStatus = 'PENDING' | 'SIGNED' | 'REJECTED';
+
+export interface Requester {
+  id: string;
+  name: string;
+  email: string;
+}
+
+export interface ApproverInput {
+  role: string;
+  name: string;
+  email: string;
+}
+
+export interface CreatePurchaseRequestInput {
+  title: string;
+  description: string;
+  amount: number;
+  requester: Requester;
+  approvers: ApproverInput[];
+}
+
+export interface PurchaseRequestItem {
+  PK: string;
+  SK: 'METADATA';
+  entityType: 'PURCHASE_REQUEST';
+  requestId: string;
+  title: string;
+  description: string;
+  amount: number;
+  requester: Requester;
+  status: RequestStatus;
+  currentApproverOrder: number;
+  createdAt: string;
+  updatedAt: string;
+  GSI1PK: string;
+  GSI1SK: string;
+}
+
+export interface ApproverItem {
+  PK: string;
+  SK: string;
+  entityType: 'APPROVER';
+  requestId: string;
+  approverId: string;
+  order: number;
+  role: string;
+  name: string;
+  email: string;
+  status: ApprovalStatus;
+  approvalToken: string;
+  createdAt: string;
+  updatedAt: string;
+  GSI2PK: string;
+  GSI2SK: string;
+}
