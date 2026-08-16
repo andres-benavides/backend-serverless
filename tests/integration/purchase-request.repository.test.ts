@@ -138,4 +138,18 @@ describe.skipIf(!enabled)('PurchaseRequestRepository (DynamoDB Local)', () => {
 
     expect(items).toEqual([]);
   });
+
+  it('queries requester requests through GSI1', async () => {
+    const items = await repository.findByRequester('user-001');
+
+    expect(items).toHaveLength(1);
+    expect(items[0].requestId).toBe(requestId);
+    expect(items[0].entityType).toBe('PURCHASE_REQUEST');
+  });
+
+  it('returns an empty list for an unknown requester', async () => {
+    const items = await repository.findByRequester('does-not-exist');
+
+    expect(items).toEqual([]);
+  });
 });

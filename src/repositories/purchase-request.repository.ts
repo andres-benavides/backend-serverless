@@ -41,4 +41,29 @@ export class PurchaseRequestRepository {
 
     return (result.Items ?? []) as Array<PurchaseRequestItem | ApproverItem>;
   }
+
+  async findByRequester(requesterId: string): Promise<PurchaseRequestItem[]> {
+    const requests: PurchaseRequestItem[] = [];
+    let exclusiveStartKey: Record<string, unknown> | undefined;
+
+    do {
+      const result = await dynamodb.send(
+        new QueryCommand({
+          TableName: this.tableName,
+          IndexName: 'GSI1',
+          KeyConditionExpression: 'GSI1PK = :gsi1pk',
+          ExpressionAttributeValues: {
+            ':gsi1pk': `REQUESTER#${requesterId}`,
+          },
+          ScanIndexForward: false,
+          ExclusiveStartKey: exclusiveStartKey,
+        }),
+      );
+
+      requests.push(...((result.Items ?? []) as PurchaseRequestItem[]));
+      exclusiveStartKey = result.LastEvaluatedKey;
+    } while (exclusiveStartKey);
+
+    return requests;
+  }
 }

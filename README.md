@@ -7,6 +7,7 @@ Initial AWS serverless backend scaffold for the technical challenge.
 - REST API with API Gateway
 - `POST /api/requests`
 - `GET /api/requests/{id}`
+- `GET /api/requests?requesterId={id}` using a `Query` on GSI1
 - AWS Lambda with TypeScript/Node.js
 - DynamoDB single-table model
 - Transactional creation of request + 3 approvers
@@ -84,7 +85,13 @@ npm run local:down    # docker compose down
 ```bash
 curl -X POST http://127.0.0.1:3000/api/requests \
   -H 'Content-Type: application/json' -d @events-create-request.json
+
+curl 'http://127.0.0.1:3000/api/requests?requesterId=user-001'
 ```
+
+The list endpoint returns request metadata ordered from newest to oldest. It does not return
+DynamoDB keys or approver tokens. `requesterId` is required; a requester without requests
+receives `{ "requests": [] }`.
 
 ### Puerto
 

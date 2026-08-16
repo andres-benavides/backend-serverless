@@ -38,6 +38,11 @@ export interface PurchaseRequestItem {
   GSI1SK: string;
 }
 
+export type PurchaseRequestSummary = Omit<
+  PurchaseRequestItem,
+  'PK' | 'SK' | 'entityType' | 'GSI1PK' | 'GSI1SK'
+>;
+
 export interface ApproverItem {
   PK: string;
   SK: string;

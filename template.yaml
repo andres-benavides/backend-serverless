@@ -118,6 +118,31 @@ Resources:
         Target: es2022
         Sourcemap: true
 
+  ListRequestsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ./
+      Handler: src/handlers/list-requests.handler
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:Query
+              Resource: !Sub '${PurchaseApprovalTable.Arn}/index/GSI1'
+      Events:
+        ListRequests:
+          Type: Api
+          Properties:
+            RestApiId: !Ref PurchaseApi
+            Path: /api/requests
+            Method: GET
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: false
+        Target: es2022
+        Sourcemap: true
+
 Outputs:
   ApiUrl:
     Description: REST API base URL
