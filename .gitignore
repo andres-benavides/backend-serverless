@@ -1,2 +1,17 @@
 # Dependencias
 node_modules/
+
+# Build de SAM
+.aws-sam/
+
+# Logs y credenciales locales
+*.log
+.env
+.env.*
+!.env.deploy.example
+
+# Editor
+.DS_Store
+
+# Script de despliegue local
+scripts/deploy.sh
