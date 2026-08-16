@@ -68,13 +68,15 @@ Resources:
   CreateRequestFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: src/
-      Handler: handlers/create-request.handler
+      CodeUri: ./
+      Handler: src/handlers/create-request.handler
       Policies:
         - Statement:
             - Effect: Allow
               Action:
                 - dynamodb:TransactWriteItems
+                - dynamodb:PutItem
+                - dynamodb:ConditionCheckItem
               Resource: !GetAtt PurchaseApprovalTable.Arn
       Events:
         CreateRequest:
@@ -93,8 +95,8 @@ Resources:
   GetRequestFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: src/
-      Handler: handlers/get-request.handler
+      CodeUri: ./
+      Handler: src/handlers/get-request.handler
       Policies:
         - Statement:
             - Effect: Allow
