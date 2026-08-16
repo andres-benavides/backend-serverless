@@ -1,13 +1,16 @@
 import { QueryCommand, TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
 import { dynamodb } from '../shared/dynamodb';
-import type { ApproverItem, PurchaseRequestItem } from '../domain/purchase-request';
+import type {
+  ApproverItem,
+  PurchaseRequestItem,
+} from '../domain/purchase-request';
 
 export class PurchaseRequestRepository {
   constructor(private readonly tableName: string) {}
 
   async create(
     request: PurchaseRequestItem,
-    approvers: ApproverItem[]
+    approvers: ApproverItem[],
   ): Promise<void> {
     await dynamodb.send(
       new TransactWriteCommand({
@@ -15,14 +18,17 @@ export class PurchaseRequestRepository {
           Put: {
             TableName: this.tableName,
             Item: item,
-            ConditionExpression: 'attribute_not_exists(PK) AND attribute_not_exists(SK)',
+            ConditionExpression:
+              'attribute_not_exists(PK) AND attribute_not_exists(SK)',
           },
         })),
-      })
+      }),
     );
   }
 
-  async findById(requestId: string): Promise<Array<PurchaseRequestItem | ApproverItem>> {
+  async findById(
+    requestId: string,
+  ): Promise<Array<PurchaseRequestItem | ApproverItem>> {
     const result = await dynamodb.send(
       new QueryCommand({
         TableName: this.tableName,
@@ -30,7 +36,7 @@ export class PurchaseRequestRepository {
         ExpressionAttributeValues: {
           ':pk': `REQUEST#${requestId}`,
         },
-      })
+      }),
     );
 
     return (result.Items ?? []) as Array<PurchaseRequestItem | ApproverItem>;

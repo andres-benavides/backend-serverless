@@ -4,7 +4,7 @@ import type {
   CreatePurchaseRequestInput,
   PurchaseRequestItem,
 } from '../domain/purchase-request';
-import { PurchaseRequestRepository } from '../repositories/purchase-request.repository';
+import type { PurchaseRequestRepository } from '../repositories/purchase-request.repository';
 
 export class CreatePurchaseRequestService {
   constructor(private readonly repository: PurchaseRequestRepository) {}

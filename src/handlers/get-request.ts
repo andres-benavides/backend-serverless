@@ -21,16 +21,24 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       return jsonResponse(404, { message: 'Purchase request not found' });
     }
 
-    const request = items.find((item) => item.entityType === 'PURCHASE_REQUEST');
+    const request = items.find(
+      (item) => item.entityType === 'PURCHASE_REQUEST',
+    );
     const approvers = items
       .filter((item) => item.entityType === 'APPROVER')
       .sort((a, b) => {
-        if (a.entityType !== 'APPROVER' || b.entityType !== 'APPROVER') return 0;
+        if (a.entityType !== 'APPROVER' || b.entityType !== 'APPROVER')
+          return 0;
         return a.order - b.order;
       })
       .map((item) => {
         if (item.entityType !== 'APPROVER') return item;
-        const { approvalToken: _approvalToken, GSI2PK: _gsi2pk, GSI2SK: _gsi2sk, ...safe } = item;
+        const {
+          approvalToken: _approvalToken,
+          GSI2PK: _gsi2pk,
+          GSI2SK: _gsi2sk,
+          ...safe
+        } = item;
         return safe;
       });
 
