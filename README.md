@@ -125,9 +125,17 @@ npm run test:coverage # unitarias + reporte de cobertura
 npm run test:integration
 ```
 
-Las pruebas de integracion corren contra DynamoDB Local: crean su propia tabla, la usan y la
-borran. Estan detras de `RUN_INTEGRATION_TESTS=1` para que `npm test` funcione en maquinas o
-pipelines sin Docker.
+Las pruebas de integracion corren contra DynamoDB Local: crean su propia tabla con nombre
+unico, la usan y la borran al terminar.
+
+No hay que activarlas a mano. `tests/setup.mts` comprueba si DynamoDB Local responde y decide:
+
+| Situacion                    | Resultado                                               |
+| ---------------------------- | ------------------------------------------------------- |
+| `npm run local:up` levantado | Las 31 pruebas corren                                   |
+| Sin Docker                   | Las 4 de integracion se saltan, las 27 unitarias corren |
+| `RUN_INTEGRATION_TESTS=0`    | Se saltan aunque la base este arriba                    |
+| `RUN_INTEGRATION_TESTS=1`    | Se fuerzan, y fallan si la base no responde             |
 
 El umbral de cobertura esta fijado en 60% para lineas, funciones, ramas y sentencias en
 `vitest.config.mts`; por debajo de eso el comando falla.

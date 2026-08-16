@@ -5,7 +5,7 @@ export default defineConfig({
     environment: 'node',
     include: ['tests/**/*.test.ts'],
     exclude: ['node_modules/**', '.aws-sam/**'],
-    setupFiles: ['tests/setup.ts'],
+    setupFiles: ['tests/setup.mts'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html', 'lcov'],
