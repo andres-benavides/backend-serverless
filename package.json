@@ -12,7 +12,10 @@
     "format:check": "prettier --check .",
     "prepare": "node scripts/prepare.mjs",
     "test:coverage": "vitest run --coverage",
-    "test:integration": "RUN_INTEGRATION_TESTS=1 vitest run tests/integration"
+    "test:integration": "RUN_INTEGRATION_TESTS=1 vitest run tests/integration",
+    "local:up": "docker compose up -d",
+    "local:down": "docker compose down",
+    "local:api": "sam build && sam local start-api --docker-network sam-local --env-vars env.local.json --port 3000"
   },
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.0.0",

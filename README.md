@@ -71,49 +71,44 @@ con `sts get-caller-identity` que el perfil apunta a la cuenta correcta antes de
 
 ## Desarrollo local
 
-El backend corre completo en local con DynamoDB Local sobre Docker.
+El entorno local se levanta con Docker Compose: DynamoDB Local mas un servicio de
+inicializacion que espera a que este listo y crea la tabla con el mismo esquema del
+`template.yaml`.
 
 ```bash
-docker network create sam-local
-docker run -d --name dynamodb-local --network sam-local -p 8000:8000 \
-  amazon/dynamodb-local -jar DynamoDBLocal.jar -sharedDb -inMemory
+npm run local:up      # docker compose up -d
+npm run local:api     # sam build + sam local start-api
+npm run local:down    # docker compose down
 ```
-
-`-sharedDb` es obligatorio: sin esa bandera DynamoDB Local particiona los datos por access
-key, y la tabla creada desde el host no seria visible para el contenedor de Lambda, que usa
-credenciales distintas.
-
-Crear la tabla local:
-
-```bash
-AWS_ACCESS_KEY_ID=local AWS_SECRET_ACCESS_KEY=local AWS_REGION=us-east-1 \
-aws dynamodb create-table --endpoint-url http://localhost:8000 \
-  --table-name purchase-approvals-local --billing-mode PAY_PER_REQUEST \
-  --attribute-definitions AttributeName=PK,AttributeType=S AttributeName=SK,AttributeType=S \
-    AttributeName=GSI1PK,AttributeType=S AttributeName=GSI1SK,AttributeType=S \
-    AttributeName=GSI2PK,AttributeType=S AttributeName=GSI2SK,AttributeType=S \
-  --key-schema AttributeName=PK,KeyType=HASH AttributeName=SK,KeyType=RANGE \
-  --global-secondary-indexes \
-    'IndexName=GSI1,KeySchema=[{AttributeName=GSI1PK,KeyType=HASH},{AttributeName=GSI1SK,KeyType=RANGE}],Projection={ProjectionType=ALL}' \
-    'IndexName=GSI2,KeySchema=[{AttributeName=GSI2PK,KeyType=HASH},{AttributeName=GSI2SK,KeyType=RANGE}],Projection={ProjectionType=ALL}'
-```
-
-Levantar la API:
-
-```bash
-sam build
-sam local start-api --docker-network sam-local --env-vars env.local.json --port 3000
-```
-
-`env.local.json` usa la clave global `Parameters`. SAM local solo puede **sobrescribir**
-variables ya declaradas en el template, por eso `DYNAMODB_ENDPOINT` esta declarado en
-`Globals` con valor vacio: en AWS queda vacio y el SDK usa el endpoint real, en local se
-sobrescribe apuntando al contenedor.
 
 ```bash
 curl -X POST http://127.0.0.1:3000/api/requests \
   -H 'Content-Type: application/json' -d @events-create-request.json
 ```
+
+### Puerto
+
+El contenedor siempre escucha en el 8000 dentro de la red `sam-local`, que es lo que usa la
+Lambda. El puerto publicado en el host es configurable si el 8000 ya esta ocupado:
+
+```bash
+DYNAMODB_LOCAL_PORT=8123 npm run local:up
+DYNAMODB_ENDPOINT=http://localhost:8123 npm run test:integration
+```
+
+### Detalles que no son obvios
+
+`-sharedDb` es obligatorio: sin esa bandera DynamoDB Local particiona los datos por access
+key, y la tabla creada desde el host no seria visible para el contenedor de Lambda, que usa
+credenciales distintas.
+
+`-inMemory` significa que los datos se pierden al bajar el stack. `docker compose up` vuelve
+a crear la tabla vacia.
+
+`env.local.json` usa la clave global `Parameters`. SAM local solo puede **sobrescribir**
+variables ya declaradas en el template, por eso `DYNAMODB_ENDPOINT` esta declarado en
+`Globals` con valor vacio: en AWS queda vacio y el SDK usa el endpoint real, en local se
+sobrescribe apuntando al contenedor.
 
 ## Pruebas
 
