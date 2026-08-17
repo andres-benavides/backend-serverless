@@ -39,6 +39,7 @@ const storedItems = () => [
     email: 'two@example.com',
     status: 'PENDING',
     approvalToken: 'token-two',
+    taskToken: 'task-token-secret',
     GSI2PK: 'APPROVAL_TOKEN#token-two',
     GSI2SK: `REQUEST#${requestId}#APPROVER#b`,
     createdAt: '2026-08-16T20:00:00.000Z',
@@ -126,6 +127,20 @@ describe('get-request handler', () => {
     expect(response.statusCode).toBe(200);
     expect(body.request.requestId).toBe(requestId);
     expect(body.approvers.map((approver) => approver.order)).toEqual([1, 2]);
+  });
+
+  it('never exposes the step functions task token or execution arn', async () => {
+    findById.mockResolvedValue(storedItems());
+
+    const response = await invoke(requestId);
+    const body = parse<ResponseBody>(response.body);
+
+    expect(response.body).not.toContain('task-token-secret');
+    expect(response.body).not.toContain('execution:flow');
+    expect(body.request).not.toHaveProperty('executionArn');
+    body.approvers.forEach((approver) => {
+      expect(approver).not.toHaveProperty('taskToken');
+    });
   });
 
   it('strips the approval token and its index keys', async () => {

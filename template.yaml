@@ -77,7 +77,16 @@ Resources:
               Action:
                 - dynamodb:TransactWriteItems
                 - dynamodb:PutItem
+                - dynamodb:UpdateItem
               Resource: !GetAtt PurchaseApprovalTable.Arn
+        - Statement:
+            - Effect: Allow
+              Action:
+                - states:StartExecution
+              Resource: !Ref ApprovalStateMachine
+      Environment:
+        Variables:
+          STATE_MACHINE_ARN: !Ref ApprovalStateMachine
       Events:
         CreateRequest:
           Type: Api
@@ -169,6 +178,84 @@ Resources:
         Target: es2022
         Sourcemap: true
 
+  ActivateApproverFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ./
+      Handler: src/handlers/activate-approver.handler
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:Query
+                - dynamodb:UpdateItem
+                - dynamodb:TransactWriteItems
+              Resource: !GetAtt PurchaseApprovalTable.Arn
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: false
+        Target: es2022
+        Sourcemap: true
+
+  FinalizeRequestFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ./
+      Handler: src/handlers/finalize-request.handler
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:UpdateItem
+              Resource: !GetAtt PurchaseApprovalTable.Arn
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: false
+        Target: es2022
+        Sourcemap: true
+
+  ApprovalStateMachine:
+    Type: AWS::Serverless::StateMachine
+    Properties:
+      Type: STANDARD
+      DefinitionUri: statemachine/approval-flow.asl.json
+      DefinitionSubstitutions:
+        ActivateApproverFunctionArn: !GetAtt ActivateApproverFunction.Arn
+        FinalizeRequestFunctionArn: !GetAtt FinalizeRequestFunction.Arn
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - lambda:InvokeFunction
+              Resource:
+                - !GetAtt ActivateApproverFunction.Arn
+                - !GetAtt FinalizeRequestFunction.Arn
+        - Statement:
+            - Effect: Allow
+              Action:
+                - logs:CreateLogDelivery
+                - logs:GetLogDelivery
+                - logs:UpdateLogDelivery
+                - logs:DeleteLogDelivery
+                - logs:ListLogDeliveries
+                - logs:PutResourcePolicy
+                - logs:DescribeResourcePolicies
+                - logs:DescribeLogGroups
+              Resource: '*'
+      Logging:
+        Destinations:
+          - CloudWatchLogsLogGroup:
+              LogGroupArn: !GetAtt ApprovalStateMachineLogGroup.Arn
+        IncludeExecutionData: false
+        Level: ERROR
+
+  ApprovalStateMachineLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      RetentionInDays: 14
+
 Outputs:
   ApiUrl:
     Description: REST API base URL
@@ -176,3 +263,6 @@ Outputs:
   TableName:
     Description: DynamoDB table name
     Value: !Ref PurchaseApprovalTable
+  StateMachineArn:
+    Description: Approval workflow state machine
+    Value: !Ref ApprovalStateMachine

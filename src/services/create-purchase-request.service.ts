@@ -4,10 +4,14 @@ import type {
   CreatePurchaseRequestInput,
   PurchaseRequestItem,
 } from '../domain/purchase-request';
+import type { ApprovalWorkflow } from '../infrastructure/approval-workflow';
 import type { PurchaseRequestRepository } from '../repositories/purchase-request.repository';
 
 export class CreatePurchaseRequestService {
-  constructor(private readonly repository: PurchaseRequestRepository) {}
+  constructor(
+    private readonly repository: PurchaseRequestRepository,
+    private readonly workflow?: ApprovalWorkflow,
+  ) {}
 
   async execute(input: CreatePurchaseRequestInput) {
     const requestId = randomUUID();
@@ -55,6 +59,15 @@ export class CreatePurchaseRequestService {
     });
 
     await this.repository.create(request, approvers);
+
+    if (this.workflow) {
+      const executionArn = await this.workflow.start(requestId);
+
+      if (executionArn) {
+        await this.repository.saveExecutionArn(requestId, executionArn);
+        request.executionArn = executionArn;
+      }
+    }
 
     return {
       request,

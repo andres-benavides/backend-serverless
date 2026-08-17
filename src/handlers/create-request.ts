@@ -1,5 +1,6 @@
 import type { APIGatewayProxyHandler } from 'aws-lambda';
 import { ZodError } from 'zod';
+import { StepFunctionsApprovalWorkflow } from '../infrastructure/approval-workflow';
 import { PurchaseRequestRepository } from '../repositories/purchase-request.repository';
 import { createRequestSchema } from '../schemas/create-request.schema';
 import { CreatePurchaseRequestService } from '../services/create-purchase-request.service';
@@ -8,8 +9,13 @@ import { jsonResponse } from '../shared/http';
 const tableName = process.env.TABLE_NAME;
 if (!tableName) throw new Error('TABLE_NAME is required');
 
+const stateMachineArn = process.env.STATE_MACHINE_ARN;
+
 const repository = new PurchaseRequestRepository(tableName);
-const service = new CreatePurchaseRequestService(repository);
+const workflow = stateMachineArn
+  ? new StepFunctionsApprovalWorkflow(stateMachineArn)
+  : undefined;
+const service = new CreatePurchaseRequestService(repository, workflow);
 
 export const handler: APIGatewayProxyHandler = async (event) => {
   try {

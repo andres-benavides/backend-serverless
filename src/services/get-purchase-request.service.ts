@@ -15,6 +15,7 @@ const toRequestSummary = (
     PK: _pk,
     SK: _sk,
     entityType: _entityType,
+    executionArn: _executionArn,
     GSI1PK: _gsi1pk,
     GSI1SK: _gsi1sk,
     ...summary
@@ -29,6 +30,7 @@ const toApproverSummary = (item: ApproverItem): ApproverSummary => {
     SK: _sk,
     entityType: _entityType,
     approvalToken: _approvalToken,
+    taskToken: _taskToken,
     GSI2PK: _gsi2pk,
     GSI2SK: _gsi2sk,
     ...summary

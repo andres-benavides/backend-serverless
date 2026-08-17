@@ -20,11 +20,17 @@ const input: CreatePurchaseRequestInput = {
 };
 
 describe('CreatePurchaseRequestService', () => {
-  let repository: { create: ReturnType<typeof vi.fn> };
+  let repository: {
+    create: ReturnType<typeof vi.fn>;
+    saveExecutionArn: ReturnType<typeof vi.fn>;
+  };
   let service: CreatePurchaseRequestService;
 
   beforeEach(() => {
-    repository = { create: vi.fn().mockResolvedValue(undefined) };
+    repository = {
+      create: vi.fn().mockResolvedValue(undefined),
+      saveExecutionArn: vi.fn().mockResolvedValue(undefined),
+    };
     service = new CreatePurchaseRequestService(
       repository as unknown as PurchaseRequestRepository,
     );
@@ -93,5 +99,63 @@ describe('CreatePurchaseRequestService', () => {
     repository.create.mockRejectedValue(new Error('dynamo is down'));
 
     await expect(service.execute(input)).rejects.toThrow('dynamo is down');
+  });
+
+  it('does not touch the workflow when none is configured', async () => {
+    await service.execute(input);
+
+    expect(repository.saveExecutionArn).not.toHaveBeenCalled();
+  });
+
+  it('starts the approval workflow and stores its execution arn', async () => {
+    const executionArn = 'arn:aws:states:us-east-1:1:execution:flow:req-1';
+    const workflow = { start: vi.fn().mockResolvedValue(executionArn) };
+    service = new CreatePurchaseRequestService(
+      repository as unknown as PurchaseRequestRepository,
+      workflow,
+    );
+
+    const { request } = await service.execute(input);
+
+    expect(workflow.start).toHaveBeenCalledWith(request.requestId);
+    expect(repository.saveExecutionArn).toHaveBeenCalledWith(
+      request.requestId,
+      executionArn,
+    );
+    expect(request.executionArn).toBe(executionArn);
+  });
+
+  it('starts the workflow only after the request is persisted', async () => {
+    const order: string[] = [];
+    repository.create.mockImplementation(async () => {
+      order.push('create');
+      return Promise.resolve();
+    });
+    const workflow = {
+      start: vi.fn().mockImplementation(async () => {
+        order.push('start');
+        return Promise.resolve('arn');
+      }),
+    };
+    service = new CreatePurchaseRequestService(
+      repository as unknown as PurchaseRequestRepository,
+      workflow,
+    );
+
+    await service.execute(input);
+
+    expect(order).toEqual(['create', 'start']);
+  });
+
+  it('propagates workflow failures', async () => {
+    const workflow = {
+      start: vi.fn().mockRejectedValue(new Error('states unavailable')),
+    };
+    service = new CreatePurchaseRequestService(
+      repository as unknown as PurchaseRequestRepository,
+      workflow,
+    );
+
+    await expect(service.execute(input)).rejects.toThrow('states unavailable');
   });
 });

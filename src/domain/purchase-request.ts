@@ -32,6 +32,7 @@ export interface PurchaseRequestItem {
   requester: Requester;
   status: RequestStatus;
   currentApproverOrder: number;
+  executionArn?: string;
   createdAt: string;
   updatedAt: string;
   GSI1PK: string;
@@ -40,7 +41,7 @@ export interface PurchaseRequestItem {
 
 export type PurchaseRequestSummary = Omit<
   PurchaseRequestItem,
-  'PK' | 'SK' | 'entityType' | 'GSI1PK' | 'GSI1SK'
+  'PK' | 'SK' | 'entityType' | 'executionArn' | 'GSI1PK' | 'GSI1SK'
 >;
 
 export interface ApproverItem {
@@ -55,6 +56,8 @@ export interface ApproverItem {
   email: string;
   status: ApprovalStatus;
   approvalToken: string;
+  taskToken?: string;
+  activatedAt?: string;
   createdAt: string;
   updatedAt: string;
   GSI2PK: string;
@@ -69,7 +72,13 @@ export interface ApprovalView {
 
 export type ApproverSummary = Omit<
   ApproverItem,
-  'PK' | 'SK' | 'entityType' | 'approvalToken' | 'GSI2PK' | 'GSI2SK'
+  | 'PK'
+  | 'SK'
+  | 'entityType'
+  | 'approvalToken'
+  | 'taskToken'
+  | 'GSI2PK'
+  | 'GSI2SK'
 >;
 
 export interface PurchaseRequestDetail {

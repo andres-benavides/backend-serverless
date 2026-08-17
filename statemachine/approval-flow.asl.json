@@ -1,0 +1,143 @@
+{
+  "Comment": "Sequential purchase approval flow with human callbacks",
+  "StartAt": "ActivateApprover1",
+  "States": {
+    "ActivateApprover1": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke.waitForTaskToken",
+      "Parameters": {
+        "FunctionName": "${ActivateApproverFunctionArn}",
+        "Payload": {
+          "requestId.$": "$.requestId",
+          "order": 1,
+          "taskToken.$": "$$.Task.Token"
+        }
+      },
+      "ResultPath": "$.approval",
+      "Next": "Decision1",
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "RejectRequest"
+        }
+      ]
+    },
+    "Decision1": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.approval.decision",
+          "StringEquals": "APPROVED",
+          "Next": "ActivateApprover2"
+        }
+      ],
+      "Default": "RejectRequest"
+    },
+    "ActivateApprover2": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke.waitForTaskToken",
+      "Parameters": {
+        "FunctionName": "${ActivateApproverFunctionArn}",
+        "Payload": {
+          "requestId.$": "$.requestId",
+          "order": 2,
+          "taskToken.$": "$$.Task.Token"
+        }
+      },
+      "ResultPath": "$.approval",
+      "Next": "Decision2",
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "RejectRequest"
+        }
+      ]
+    },
+    "Decision2": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.approval.decision",
+          "StringEquals": "APPROVED",
+          "Next": "ActivateApprover3"
+        }
+      ],
+      "Default": "RejectRequest"
+    },
+    "ActivateApprover3": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke.waitForTaskToken",
+      "Parameters": {
+        "FunctionName": "${ActivateApproverFunctionArn}",
+        "Payload": {
+          "requestId.$": "$.requestId",
+          "order": 3,
+          "taskToken.$": "$$.Task.Token"
+        }
+      },
+      "ResultPath": "$.approval",
+      "Next": "Decision3",
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "RejectRequest"
+        }
+      ]
+    },
+    "Decision3": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.approval.decision",
+          "StringEquals": "APPROVED",
+          "Next": "GenerateEvidence"
+        }
+      ],
+      "Default": "RejectRequest"
+    },
+    "GenerateEvidence": {
+      "Type": "Pass",
+      "Comment": "Placeholder replaced by the PDF generation task in phase 7",
+      "ResultPath": "$.evidence",
+      "Result": {
+        "generated": false
+      },
+      "Next": "CompleteRequest"
+    },
+    "CompleteRequest": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${FinalizeRequestFunctionArn}",
+        "Payload": {
+          "requestId.$": "$.requestId",
+          "status": "COMPLETED"
+        }
+      },
+      "ResultSelector": {
+        "status.$": "$.Payload.status"
+      },
+      "ResultPath": "$.result",
+      "End": true
+    },
+    "RejectRequest": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${FinalizeRequestFunctionArn}",
+        "Payload": {
+          "requestId.$": "$.requestId",
+          "status": "REJECTED"
+        }
+      },
+      "ResultSelector": {
+        "status.$": "$.Payload.status"
+      },
+      "ResultPath": "$.result",
+      "End": true
+    }
+  }
+}

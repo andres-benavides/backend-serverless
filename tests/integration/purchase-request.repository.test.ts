@@ -182,4 +182,56 @@ describe.skipIf(!enabled)('PurchaseRequestRepository (DynamoDB Local)', () => {
 
     expect(metadata).toBeUndefined();
   });
+
+  it('finds an approver by its order', async () => {
+    const found = await repository.findApproverByOrder(requestId, 2);
+
+    expect(found?.approverId).toBe('approver-2');
+  });
+
+  it('stores the execution arn on the metadata item', async () => {
+    await repository.saveExecutionArn(requestId, 'arn:execution:1');
+
+    const metadata = await repository.findRequestMetadata(requestId);
+
+    expect(metadata?.executionArn).toBe('arn:execution:1');
+  });
+
+  it('activates an approver and advances the current order atomically', async () => {
+    await repository.activateApprover(
+      requestId,
+      'APPROVER#02#approver-2',
+      2,
+      'task-token-2',
+    );
+
+    const approver = await repository.findApproverByOrder(requestId, 2);
+    const metadata = await repository.findRequestMetadata(requestId);
+
+    expect(approver?.taskToken).toBe('task-token-2');
+    expect(approver?.activatedAt).toEqual(expect.any(String));
+    expect(metadata?.currentApproverOrder).toBe(2);
+  });
+
+  it('moves the request to a final state only once', async () => {
+    await repository.updateRequestStatus(requestId, 'COMPLETED');
+
+    const metadata = await repository.findRequestMetadata(requestId);
+    expect(metadata?.status).toBe('COMPLETED');
+
+    await expect(
+      repository.updateRequestStatus(requestId, 'REJECTED'),
+    ).rejects.toThrow();
+  });
+
+  it('refuses to activate an approver once the request is closed', async () => {
+    await expect(
+      repository.activateApprover(
+        requestId,
+        'APPROVER#03#approver-3',
+        3,
+        'task-token-3',
+      ),
+    ).rejects.toThrow();
+  });
 });

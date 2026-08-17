@@ -12,6 +12,7 @@ export class ListPurchaseRequestsService {
         PK: _pk,
         SK: _sk,
         entityType: _entityType,
+        executionArn: _executionArn,
         GSI1PK: _gsi1pk,
         GSI1SK: _gsi1sk,
         ...request

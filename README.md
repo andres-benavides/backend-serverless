@@ -85,6 +85,79 @@ Se responde 200 con `active: false` en vez de 409 porque es una consulta de esta
 frontend necesita saber en que situacion esta la aprobacion para decidir que pantalla
 mostrar, y un error no transporta esa informacion.
 
+## Flujo de aprobacion
+
+"Firmas concatenadas" se interpreta como aprobaciones **secuenciales**: el aprobador 2 no
+puede actuar hasta que el 1 firme. La orquestacion vive en una maquina de estados de
+AWS Step Functions **Standard**.
+
+```
+ActivateApprover1 -> espera callback -> APPROVED?
+   |- si -> ActivateApprover2 -> espera -> APPROVED?
+   |          |- si -> ActivateApprover3 -> espera -> APPROVED?
+   |          |          |- si -> GenerateEvidence -> CompleteRequest
+   |          |          |- no -> RejectRequest
+   |          |- no -> RejectRequest
+   |- no -> RejectRequest
+```
+
+Definicion en `statemachine/approval-flow.asl.json`.
+
+### Por que Standard y no Express
+
+Las esperas son de interaccion humana: una aprobacion puede tardar minutos, horas o dias.
+Express tiene un limite de 5 minutos de ejecucion y no soporta el patron de callback. Standard
+permite ejecuciones de hasta un ano y `waitForTaskToken`.
+
+### Task token
+
+Cada estado `ActivateApproverN` invoca la Lambda con
+`arn:aws:states:::lambda:invoke.waitForTaskToken`. La Lambda guarda el `taskToken` contra el
+aprobador y termina; la ejecucion queda esperando el callback.
+
+Hay **dos tokens distintos** y no deben confundirse:
+
+| Token           | Alcance                                     | Se expone al navegador |
+| --------------- | ------------------------------------------- | ---------------------- |
+| `approvalToken` | Publico, identifica al aprobador en su link | Si                     |
+| `taskToken`     | Interno de Step Functions                   | **Nunca**              |
+
+El `taskToken` y el `executionArn` estan excluidos de todas las respuestas de la API.
+
+### Activacion y concurrencia
+
+`activateApprover` escribe el `taskToken` del aprobador y el `currentApproverOrder` de la
+solicitud en un solo `TransactWriteItems`, ambos con `ConditionExpression` sobre
+`status = PENDING`. Si la solicitud ya fue rechazada o completada, la activacion falla en vez
+de dejar el modelo inconsistente.
+
+`updateRequestStatus` tambien es condicional sobre `PENDING`, asi que un callback repetido no
+puede pasar de `REJECTED` a `COMPLETED` ni al reves.
+
+### Doble escritura conocida
+
+`POST /api/requests` hace dos cosas que no pueden ir en una sola transaccion: escribe en
+DynamoDB e inicia la ejecucion en Step Functions. Si el `StartExecution` falla, la solicitud
+queda persistida en `PENDING` sin `executionArn` y el endpoint responde 500.
+
+Se eligio propagar el error en vez de silenciarlo, porque una solicitud sin workflow nunca
+avanzaria y quedaria invisible. Las solicitudes en ese estado son identificables justamente
+por no tener `executionArn`.
+
+La solucion definitiva seria disparar la maquina de estados desde un DynamoDB Stream
+(patron outbox), lo que elimina la doble escritura. No se implemento para no anadir un
+componente mas a la prueba.
+
+`StartExecution` usa el `requestId` como nombre de ejecucion, de modo que un reintento con el
+mismo id no crea una segunda ejecucion.
+
+### Permiso amplio justificado
+
+El rol de la maquina de estados incluye acciones `logs:*LogDelivery` sobre `Resource: '*'`.
+Es un requisito de AWS: el logging de Step Functions no admite ARNs concretos en esas
+acciones. Sin ellas el despliegue falla con
+`The state machine IAM Role is not authorized to access the Log Destination`.
+
 ## Despliegue
 
 ### Requisitos
