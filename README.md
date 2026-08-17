@@ -339,6 +339,62 @@ modo que el reintento converge.
 `states:SendTaskSuccess` y `states:SendTaskFailure` van con `Resource: '*'` porque el task
 token no es un ARN: AWS no admite permisos a nivel de recurso para esas acciones.
 
+## Evidencia en PDF
+
+Cuando los tres aprobadores firman, la maquina de estados invoca `GenerateEvidenceFunction`,
+que arma el PDF con `pdf-lib` y lo sube a S3 antes de marcar la solicitud como `COMPLETED`.
+
+```http
+GET /api/requests/{id}/evidence
+```
+
+```json
+{
+  "evidence": {
+    "url": "https://...s3.us-east-1.amazonaws.com/requests/{id}/evidence.pdf?X-Amz-...",
+    "expiresInSeconds": 300
+  }
+}
+```
+
+Contenido del documento: titulo, descripcion, monto, fecha de creacion, solicitante y una tabla
+con los tres aprobadores, su rol, su estado y el timestamp de cada firma.
+
+### El bucket es privado
+
+El bucket bloquea todo acceso publico (`BlockPublicAcls`, `BlockPublicPolicy`,
+`IgnorePublicAcls`, `RestrictPublicBuckets`), cifra en reposo con AES256 y tiene versionado.
+
+La descarga se hace con una **presigned URL de 5 minutos**. Verificado contra AWS: la URL
+firmada devuelve 200 con `application/pdf`, y la misma ruta sin firma devuelve **403**.
+
+DynamoDB solo guarda `evidenceKey` (`requests/{requestId}/evidence.pdf`), nunca el binario.
+
+### El resultado se deriva de las firmas
+
+El PDF se genera **antes** de que `CompleteRequest` marque la solicitud como `COMPLETED`, asi
+que leer `request.status` en ese momento mostraria `PENDING` en el documento. El campo
+`Resultado` se calcula desde el estado de los aprobadores, que es lo que la evidencia realmente
+certifica, y no depende del orden de escritura del workflow.
+
+### Reintentos
+
+El estado `GenerateEvidence` reintenta hasta 3 veces con backoff exponencial. La generacion es
+idempotente: la clave en S3 es determinista, asi que un reintento sobrescribe el mismo objeto.
+
+| Caso                    | Respuesta              |
+| ----------------------- | ---------------------- |
+| Evidencia disponible    | 200 con la URL firmada |
+| Aun sin las tres firmas | 409                    |
+| Solicitud inexistente   | 404                    |
+
+### Diferencia con el enunciado
+
+El PDF de la prueba nombra el endpoint como `/api/solicitudes/{id}/evidencia.pdf`. Se
+implemento como `/api/requests/{id}/evidence` por coherencia con el resto de la API, que esta
+en ingles, y porque devuelve una URL firmada en JSON en lugar del binario. Si se prefiere la
+ruta literal del enunciado, es solo anadir un evento mas a la misma Lambda.
+
 ## Despliegue
 
 ### Requisitos

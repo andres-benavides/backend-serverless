@@ -126,4 +126,15 @@ describe('buildEvidencePdf', () => {
 
     expect(parsed.getPageCount()).toBe(1);
   });
+
+  it('reports the outcome from the signatures, not the transient status', async () => {
+    const bytes = await buildEvidencePdf(
+      { ...request, status: 'PENDING' },
+      approvers,
+      generatedAt,
+    );
+    const raw = Buffer.from(bytes).toString('latin1');
+
+    expect(raw).not.toContain('PENDING');
+  });
 });

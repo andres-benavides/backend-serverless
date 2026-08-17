@@ -21,6 +21,21 @@ const formatAmount = (amount: number): string =>
 const formatDate = (iso: string): string =>
   `${iso.slice(0, 10)} ${iso.slice(11, 19)} UTC`;
 
+const outcomeLabel = (approvers: ApproverItem[]): string => {
+  if (approvers.some((approver) => approver.status === 'REJECTED')) {
+    return 'Rechazada';
+  }
+
+  if (
+    approvers.length > 0 &&
+    approvers.every((approver) => approver.status === 'SIGNED')
+  ) {
+    return 'Aprobada por los tres aprobadores';
+  }
+
+  return 'En proceso';
+};
+
 const statusLabel = (approver: ApproverItem): string => {
   if (approver.status === 'SIGNED') return 'Firmado';
   if (approver.status === 'REJECTED') return 'Rechazado';
@@ -82,7 +97,7 @@ export const buildEvidencePdf = async (
     ['Monto', formatAmount(request.amount)],
     ['Fecha de creacion', formatDate(request.createdAt)],
     ['Solicitante', `${request.requester.name} (${request.requester.email})`],
-    ['Estado', request.status],
+    ['Resultado', outcomeLabel(approvers)],
   ];
 
   for (const [label, value] of fields) {
