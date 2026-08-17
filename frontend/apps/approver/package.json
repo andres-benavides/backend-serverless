@@ -1,0 +1,9 @@
+{
+  "name": "@amm/approver",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "webpack serve --config webpack.config.cjs --mode development",
+    "build": "webpack --config webpack.config.cjs --mode production"
+  }
+}

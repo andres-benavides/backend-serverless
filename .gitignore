@@ -18,3 +18,11 @@ scripts/deploy.sh
 
 # Cobertura
 coverage/
+
+# Frontend
+frontend/node_modules/
+frontend/apps/*/dist/
+frontend/coverage/
+
+# Salida del MCP de Playwright
+.playwright-mcp/
