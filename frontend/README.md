@@ -2,6 +2,8 @@
 
 Micro-frontends con **webpack Module Federation**, React 18, React Router y `fetch`.
 
+**Desplegado en https://d2jbn2huy2ajh.cloudfront.net**
+
 ## Estructura
 
 ```
@@ -144,3 +146,61 @@ REQUESTER_REMOTE_URL=https://requester.example.com \
 APPROVER_REMOTE_URL=https://approver.example.com \
 npm run build -w @amm/shell
 ```
+
+## Despliegue
+
+Las tres apps son estaticos: van a un bucket S3 privado servido por una unica distribucion de
+CloudFront.
+
+```
+/               shell (host)
+/requester/     remote
+/approver/      remote
+```
+
+### Infraestructura
+
+```bash
+aws cloudformation deploy \
+  --template-file infrastructure/template.yaml \
+  --stack-name amm-purchase-approvals-frontend \
+  --profile personal --region us-east-1
+```
+
+El bucket **no** usa hosting web ni politica publica. CloudFront accede con Origin Access
+Control firmando cada peticion con SigV4, y la politica del bucket solo confia en esa
+distribucion concreta mediante `AWS:SourceArn`. Acceder al bucket directo devuelve 403.
+
+### Publicar
+
+Cada app se construye con el `publicPath` de su prefijo, o sus chunks no resuelven:
+
+```bash
+SITE=https://d2jbn2huy2ajh.cloudfront.net
+
+PUBLIC_PATH=/requester/ npm run build -w @amm/requester
+PUBLIC_PATH=/approver/  npm run build -w @amm/approver
+
+REQUESTER_REMOTE_URL="$SITE/requester" \
+APPROVER_REMOTE_URL="$SITE/approver" \
+npm run build -w @amm/shell
+```
+
+El shell necesita conocer la URL de los remotes en tiempo de build, asi que la infraestructura
+se despliega primero y su dominio se pasa por variable de entorno.
+
+```bash
+BUCKET=<BucketName del stack>
+
+aws s3 sync apps/requester/dist "s3://$BUCKET/requester" --delete
+aws s3 sync apps/approver/dist  "s3://$BUCKET/approver"  --delete
+aws s3 sync apps/shell/dist     "s3://$BUCKET" --exclude "requester/*" --exclude "approver/*"
+
+aws cloudfront create-invalidation --distribution-id <DistributionId> --paths "/*"
+```
+
+### Routing del SPA
+
+La distribucion traduce los errores 403 y 404 a `/index.html` con codigo 200. Sin eso, entrar
+directo a `/requests/new` daria 404: ese objeto no existe en S3, la ruta la resuelve React
+Router en el cliente.

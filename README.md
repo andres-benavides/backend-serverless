@@ -1,38 +1,59 @@
-# AMM Purchase Approvals - Backend
+# AMM Purchase Approvals
 
-Initial AWS serverless backend scaffold for the technical challenge.
+Flujo de aprobaciones de compra con firmas digitales concatenadas, resuelto con una arquitectura
+serverless en AWS. Prueba tecnica para perfil fullstack senior.
 
-## First increment
+## URLs de prueba
 
-- REST API with API Gateway
-- `POST /api/requests`
-- `GET /api/requests/{id}`
-- `GET /api/requests?requesterId={id}` using a `Query` on GSI1
-- AWS Lambda with TypeScript/Node.js
-- DynamoDB single-table model
-- Transactional creation of request + 3 approvers
-- GSI1 reserved for requester request listing
-- GSI2 reserved for approval-token lookup
+|                    |                                                                      |
+| ------------------ | -------------------------------------------------------------------- |
+| **Aplicacion**     | https://d2jbn2huy2ajh.cloudfront.net                                 |
+| **API**            | https://5oxai8sky9.execute-api.us-east-1.amazonaws.com/dev           |
+| **Buzon simulado** | https://5oxai8sky9.execute-api.us-east-1.amazonaws.com/dev/mock-mail |
 
-## Install
+Para recorrer el flujo completo sin salir del navegador: crea una solicitud, abre **Bandeja**, y
+desde ahi entra a la aprobacion con su codigo OTP a la vista.
+
+## Que hay implementado
+
+Una solicitud se crea con tres aprobadores. Una maquina de estados de Step Functions los activa
+**en orden**: el aprobador 2 no puede actuar hasta que el 1 firme. Cada uno recibe un link con su
+token, valida un OTP de 6 digitos vigente 3 minutos, y decide. Al firmar el tercero se genera un
+PDF de evidencia que se descarga con una URL prefirmada.
+
+| Componente   | Tecnologia                                               |
+| ------------ | -------------------------------------------------------- |
+| API REST     | API Gateway + Lambda (TypeScript, Node 22)               |
+| Persistencia | DynamoDB single-table con GSI1 y GSI2                    |
+| Orquestacion | Step Functions Standard con `waitForTaskToken`           |
+| Evidencia    | `pdf-lib` + S3 privado con presigned URL                 |
+| Frontend     | React 18 + micro-frontends con webpack Module Federation |
+| IaC          | AWS SAM / CloudFormation                                 |
+
+```
+Backend   236 pruebas   97% cobertura
+Frontend   50 pruebas   89% cobertura
+```
+
+El codigo del frontend vive en [`frontend/`](frontend/) y tiene su propio README.
+
+## Requisitos
+
+- Node 22 (hay un `.nvmrc`)
+- AWS SAM CLI
+- Docker, solo para el entorno local
+
+## Instalar
 
 ```bash
 npm install
 ```
 
-## Validate/build
+## Validar y construir
 
 ```bash
 sam validate
 sam build
-```
-
-## Deploy for the first end-to-end test
-
-`sam local start-api` does not create DynamoDB for you. For this first increment, the simplest end-to-end validation is to deploy the stack to a development AWS account. We can add DynamoDB Local later for integration tests.
-
-```bash
-sam deploy --guided
 ```
 
 ## Assumptions

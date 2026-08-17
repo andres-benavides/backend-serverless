@@ -7,7 +7,7 @@ module.exports = createConfig({
   name: 'shell',
   port: Number(process.env.PORT ?? 5170),
   appDir: __dirname,
-  publicPath: '/',
+  publicPath: process.env.PUBLIC_PATH ?? '/',
   remotes: {
     requester: remoteUrl('requester', 5171),
     approver: remoteUrl('approver', 5172),

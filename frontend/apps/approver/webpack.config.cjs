@@ -5,6 +5,7 @@ module.exports = createConfig({
   name: 'approver',
   port: Number(process.env.PORT ?? 5172),
   appDir: __dirname,
+  publicPath: process.env.PUBLIC_PATH ?? 'auto',
   exposes: {
     './ApproverApp': path.resolve(__dirname, 'src/ApproverApp.tsx'),
     './MailboxApp': path.resolve(__dirname, 'src/MailboxApp.tsx'),
