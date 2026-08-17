@@ -1,3 +1,4 @@
+import type { MailSender } from '../infrastructure/mail-sender';
 import type { PurchaseRequestRepository } from '../repositories/purchase-request.repository';
 import { NotFoundError } from '../shared/errors';
 
@@ -8,7 +9,10 @@ export interface ActivateApproverInput {
 }
 
 export class ActivateApproverService {
-  constructor(private readonly repository: PurchaseRequestRepository) {}
+  constructor(
+    private readonly repository: PurchaseRequestRepository,
+    private readonly mailSender?: MailSender,
+  ) {}
 
   async execute({
     requestId,
@@ -32,5 +36,17 @@ export class ActivateApproverService {
       order,
       taskToken,
     );
+
+    if (this.mailSender) {
+      await this.mailSender.sendApprovalMail({
+        requestId,
+        approverId: approver.approverId,
+        to: approver.email,
+        approverName: approver.name,
+        role: approver.role,
+        order: approver.order,
+        approvalToken: approver.approvalToken,
+      });
+    }
   }
 }

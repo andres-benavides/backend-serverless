@@ -13,5 +13,28 @@
   },
   "[json]": {
     "editor.defaultFormatter": "esbenp.prettier-vscode"
-  }
+  },
+  "yaml.customTags": [
+    "!Ref scalar",
+    "!Sub scalar",
+    "!Sub sequence",
+    "!GetAtt scalar",
+    "!GetAtt sequence",
+    "!Join sequence",
+    "!Select sequence",
+    "!Split sequence",
+    "!FindInMap sequence",
+    "!If sequence",
+    "!Equals sequence",
+    "!And sequence",
+    "!Or sequence",
+    "!Not sequence",
+    "!Base64 scalar",
+    "!Base64 mapping",
+    "!Cidr sequence",
+    "!ImportValue scalar",
+    "!GetAZs scalar",
+    "!Transform mapping",
+    "!Condition scalar"
+  ]
 }

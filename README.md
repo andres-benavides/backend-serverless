@@ -158,6 +158,61 @@ Es un requisito de AWS: el logging de Step Functions no admite ARNs concretos en
 acciones. Sin ellas el despliegue falla con
 `The state machine IAM Role is not authorized to access the Log Destination`.
 
+## Mock Mail
+
+El PDF permite simular el envio de correo. Cuando Step Functions activa a un aprobador, la
+Lambda `activate-approver` graba un correo simulado con su link de aprobacion.
+
+```http
+GET /mock-mail
+GET /mock-mail?requestId={id}
+GET /mock-mail?limit=10
+```
+
+```json
+{
+  "mails": [
+    {
+      "to": "one@example.com",
+      "approverName": "Approver One",
+      "role": "Manager",
+      "order": 1,
+      "subject": "Aprobacion pendiente de la solicitud ...",
+      "approvalLink": "https://dominio.com/approve?solicitud_id=...&approver_token=...",
+      "sentAt": "2026-08-17T01:23:06.179Z"
+    }
+  ]
+}
+```
+
+El formato del link sigue el ejemplo del enunciado.
+
+> **Endpoint de demostracion.** `/mock-mail` expone `approvalToken`, que es lo que en
+> produccion llegaria unicamente al buzon del aprobador. Existe para poder probar el flujo sin
+> SMTP y **debe eliminarse o protegerse antes de cualquier uso real**.
+
+### Solo se envia cuando llega el turno
+
+El correo se emite desde la activacion, no desde la creacion de la solicitud. Los aprobadores
+2 y 3 no reciben nada hasta que el anterior firma. Comprobado end to end:
+
+| Momento                    | `GET /api/approvals/{token2}` | Correos del aprobador 2 |
+| -------------------------- | ----------------------------- | ----------------------- |
+| Antes de su turno          | `active: false`               | 0                       |
+| Tras firmar el aprobador 1 | `active: true`                | 1                       |
+
+### Preparado para SES
+
+`activate-approver` depende de la interfaz `MailSender`, no de DynamoDB. `MockMailSender` es
+la implementacion actual; sustituirla por una `SesMailSender` no requiere tocar el servicio.
+
+### Modelo de datos
+
+Los correos viven en la misma tabla: `PK = REQUEST#{requestId}`, `SK = MAIL#{approverId}`.
+La bandeja global se resuelve por GSI1 con `GSI1PK = MOCK_MAIL` y
+`GSI1SK = SENT_AT#{sentAt}#MAIL#{mailId}`, ordenada descendente. Reutiliza el indice existente
+en vez de anadir uno nuevo, y no interfiere con las consultas por `REQUESTER#`.
+
 ## Despliegue
 
 ### Requisitos

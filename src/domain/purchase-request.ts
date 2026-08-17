@@ -85,3 +85,26 @@ export interface PurchaseRequestDetail {
   request: PurchaseRequestSummary;
   approvers: ApproverSummary[];
 }
+
+export interface MockMailItem {
+  PK: string;
+  SK: string;
+  entityType: 'MOCK_MAIL';
+  mailId: string;
+  requestId: string;
+  approverId: string;
+  to: string;
+  approverName: string;
+  role: string;
+  order: number;
+  subject: string;
+  approvalLink: string;
+  sentAt: string;
+  GSI1PK: string;
+  GSI1SK: string;
+}
+
+export type MockMailSummary = Omit<
+  MockMailItem,
+  'PK' | 'SK' | 'entityType' | 'GSI1PK' | 'GSI1SK'
+>;

@@ -2,6 +2,12 @@ AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: AMM Purchase Approval technical challenge backend
 
+Parameters:
+  AppBaseUrl:
+    Type: String
+    Default: https://dominio.com
+    Description: Base URL used to build the approval links sent by mail
+
 Globals:
   Function:
     Runtime: nodejs22.x
@@ -12,6 +18,7 @@ Globals:
       Variables:
         TABLE_NAME: !Ref PurchaseApprovalTable
         DYNAMODB_ENDPOINT: ''
+        APP_BASE_URL: !Ref AppBaseUrl
 
 Resources:
   PurchaseApi:
@@ -190,6 +197,7 @@ Resources:
                 - dynamodb:Query
                 - dynamodb:UpdateItem
                 - dynamodb:TransactWriteItems
+                - dynamodb:PutItem
               Resource: !GetAtt PurchaseApprovalTable.Arn
     Metadata:
       BuildMethod: esbuild
@@ -255,6 +263,33 @@ Resources:
     Type: AWS::Logs::LogGroup
     Properties:
       RetentionInDays: 14
+
+  ListMockMailsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ./
+      Handler: src/handlers/list-mock-mails.handler
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:Query
+              Resource:
+                - !GetAtt PurchaseApprovalTable.Arn
+                - !Sub '${PurchaseApprovalTable.Arn}/index/GSI1'
+      Events:
+        ListMockMails:
+          Type: Api
+          Properties:
+            RestApiId: !Ref PurchaseApi
+            Path: /mock-mail
+            Method: GET
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: false
+        Target: es2022
+        Sourcemap: true
 
 Outputs:
   ApiUrl:

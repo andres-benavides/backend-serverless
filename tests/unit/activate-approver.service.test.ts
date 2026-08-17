@@ -62,6 +62,40 @@ describe('ActivateApproverService', () => {
     expect(repository.activateApprover).not.toHaveBeenCalled();
   });
 
+  it('sends the approval mail after activating the approver', async () => {
+    const sendApprovalMail = vi.fn().mockResolvedValue(undefined);
+    service = new ActivateApproverService(
+      repository as unknown as PurchaseRequestRepository,
+      { sendApprovalMail },
+    );
+
+    await service.execute({ requestId, order: 2, taskToken: 'task-token-abc' });
+
+    expect(sendApprovalMail).toHaveBeenCalledWith({
+      requestId,
+      approverId: 'approver-2',
+      to: 'two@example.com',
+      approverName: 'Approver Two',
+      role: 'Finance',
+      order: 2,
+      approvalToken: 'token-2',
+    });
+  });
+
+  it('does not send mail when the approver cannot be activated', async () => {
+    const sendApprovalMail = vi.fn();
+    repository.activateApprover.mockRejectedValue(new Error('closed'));
+    service = new ActivateApproverService(
+      repository as unknown as PurchaseRequestRepository,
+      { sendApprovalMail },
+    );
+
+    await expect(
+      service.execute({ requestId, order: 2, taskToken: 'task-token-abc' }),
+    ).rejects.toThrow('closed');
+    expect(sendApprovalMail).not.toHaveBeenCalled();
+  });
+
   it('propagates conditional write failures', async () => {
     repository.activateApprover.mockRejectedValue(
       new Error('ConditionalCheckFailed'),
