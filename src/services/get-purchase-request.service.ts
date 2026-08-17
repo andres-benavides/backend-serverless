@@ -34,6 +34,7 @@ const toApproverSummary = (item: ApproverItem): ApproverSummary => {
     otpHash: _otpHash,
     otpExpiresAt: _otpExpiresAt,
     otpAttempts: _otpAttempts,
+    callbackSentAt: _callbackSentAt,
     GSI2PK: _gsi2pk,
     GSI2SK: _gsi2sk,
     ...summary

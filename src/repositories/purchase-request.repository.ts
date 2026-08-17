@@ -5,6 +5,7 @@ import {
 } from '@aws-sdk/lib-dynamodb';
 import { dynamodb } from '../shared/dynamodb';
 import type {
+  ApprovalStatus,
   ApproverItem,
   PurchaseRequestItem,
   RequestStatus,
@@ -275,6 +276,49 @@ export class PurchaseRequestRepository {
           ':verifiedAt': verifiedAt,
           ':pending': 'PENDING',
         },
+      }),
+    );
+  }
+
+  async recordDecision(
+    requestId: string,
+    approverSortKey: string,
+    status: Extract<ApprovalStatus, 'SIGNED' | 'REJECTED'>,
+    decidedAt: string,
+  ): Promise<ApproverItem> {
+    const timestampAttribute = status === 'SIGNED' ? 'signedAt' : 'rejectedAt';
+
+    const result = await dynamodb.send(
+      new UpdateCommand({
+        TableName: this.tableName,
+        Key: { PK: `REQUEST#${requestId}`, SK: approverSortKey },
+        UpdateExpression: `SET #status = :status, ${timestampAttribute} = :decidedAt, updatedAt = :decidedAt`,
+        ConditionExpression:
+          '#status = :pending AND attribute_exists(otpVerifiedAt) AND attribute_exists(taskToken)',
+        ExpressionAttributeNames: { '#status': 'status' },
+        ExpressionAttributeValues: {
+          ':status': status,
+          ':pending': 'PENDING',
+          ':decidedAt': decidedAt,
+        },
+        ReturnValues: 'ALL_NEW',
+      }),
+    );
+
+    return result.Attributes as ApproverItem;
+  }
+
+  async markCallbackSent(
+    requestId: string,
+    approverSortKey: string,
+    sentAt: string,
+  ): Promise<void> {
+    await dynamodb.send(
+      new UpdateCommand({
+        TableName: this.tableName,
+        Key: { PK: `REQUEST#${requestId}`, SK: approverSortKey },
+        UpdateExpression: 'SET callbackSentAt = :sentAt, updatedAt = :sentAt',
+        ExpressionAttributeValues: { ':sentAt': sentAt },
       }),
     );
   }

@@ -5,12 +5,15 @@ import type {
   PurchaseRequestItem,
 } from '../domain/purchase-request';
 import type { ApprovalWorkflow } from '../infrastructure/approval-workflow';
+
 import type { PurchaseRequestRepository } from '../repositories/purchase-request.repository';
+
+type WorkflowStarter = Pick<ApprovalWorkflow, 'start'>;
 
 export class CreatePurchaseRequestService {
   constructor(
     private readonly repository: PurchaseRequestRepository,
-    private readonly workflow?: ApprovalWorkflow,
+    private readonly workflow?: WorkflowStarter,
   ) {}
 
   async execute(input: CreatePurchaseRequestInput) {

@@ -1,7 +1,17 @@
-import { SFNClient, StartExecutionCommand } from '@aws-sdk/client-sfn';
+import {
+  SFNClient,
+  SendTaskSuccessCommand,
+  StartExecutionCommand,
+} from '@aws-sdk/client-sfn';
+
+export type WorkflowDecision = 'APPROVED' | 'REJECTED';
 
 export interface ApprovalWorkflow {
   start(requestId: string): Promise<string | undefined>;
+  reportDecision(
+    taskToken: string,
+    decision: WorkflowDecision,
+  ): Promise<'DELIVERED' | 'ALREADY_DELIVERED'>;
 }
 
 export class StepFunctionsApprovalWorkflow implements ApprovalWorkflow {
@@ -20,5 +30,30 @@ export class StepFunctionsApprovalWorkflow implements ApprovalWorkflow {
     );
 
     return result.executionArn;
+  }
+
+  async reportDecision(
+    taskToken: string,
+    decision: WorkflowDecision,
+  ): Promise<'DELIVERED' | 'ALREADY_DELIVERED'> {
+    try {
+      await this.client.send(
+        new SendTaskSuccessCommand({
+          taskToken,
+          output: JSON.stringify({ decision }),
+        }),
+      );
+
+      return 'DELIVERED';
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        (error.name === 'TaskDoesNotExist' || error.name === 'TaskTimedOut')
+      ) {
+        return 'ALREADY_DELIVERED';
+      }
+
+      throw error;
+    }
   }
 }

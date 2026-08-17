@@ -273,6 +273,72 @@ devuelve 409.
 `UnauthorizedError`, `ZodError`) a codigos HTTP en un unico lugar. Los handlers solo delegan,
 y ningun stack trace llega al cliente.
 
+## Decision del aprobador
+
+```http
+POST /api/approvals/{approvalToken}/decision
+```
+
+```json
+{ "decision": "APPROVE" }
+```
+
+Requisitos para que la decision se acepte: token valido, turno del aprobador, OTP verificado y
+estado `PENDING`.
+
+### El problema de la doble escritura
+
+Registrar la firma en DynamoDB y reanudar Step Functions son dos sistemas distintos y no caben
+en una transaccion. El orden elegido es:
+
+```
+1. UpdateItem condicional sobre el aprobador  ->  devuelve el taskToken
+2. SendTaskSuccess hacia Step Functions
+3. UpdateItem marcando callbackSentAt
+```
+
+DynamoDB va primero porque es la fuente de verdad: si el proceso muere entre 1 y 2, la firma
+quedo registrada pero el workflow sigue esperando. Ese estado es **detectable y reparable**,
+porque el aprobador tiene `status = SIGNED` sin `callbackSentAt`.
+
+Al reintentar la misma decision, el servicio detecta ese estado y **reenvia solo el callback**,
+sin volver a escribir la firma. Reintentar es seguro.
+
+El orden inverso seria peor: notificar primero dejaria el workflow avanzando sobre una firma
+que nunca se persistio, y eso no se puede reparar.
+
+### Proteccion contra doble firma
+
+El `UpdateItem` del paso 1 lleva:
+
+```
+ConditionExpression:
+  #status = PENDING
+  AND attribute_exists(otpVerifiedAt)
+  AND attribute_exists(taskToken)
+```
+
+Un segundo click, un reintento del navegador o dos peticiones simultaneas fallan la condicion.
+Solo una puede pasar de `PENDING` a un estado final.
+
+Ademas, `SendTaskSuccess` sobre un token ya consumido devuelve `TaskDoesNotExist` o
+`TaskTimedOut`; ambos se tratan como entrega ya realizada en vez de propagarse como error, de
+modo que el reintento converge.
+
+| Caso                         | Respuesta                      |
+| ---------------------------- | ------------------------------ |
+| Decision valida              | 200 con `status` y `decidedAt` |
+| OTP sin verificar            | 409                            |
+| Ya procesada y notificada    | 409                            |
+| Procesada pero sin notificar | 200, reenvia el callback       |
+| Token inexistente            | 404                            |
+| `decision` invalida          | 400                            |
+
+### Permiso amplio justificado
+
+`states:SendTaskSuccess` y `states:SendTaskFailure` van con `Resource: '*'` porque el task
+token no es un ARN: AWS no admite permisos a nivel de recurso para esas acciones.
+
 ## Despliegue
 
 ### Requisitos

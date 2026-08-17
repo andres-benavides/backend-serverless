@@ -348,6 +348,40 @@ Resources:
         Target: es2022
         Sourcemap: true
 
+  SubmitDecisionFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ./
+      Handler: src/handlers/submit-decision.handler
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:Query
+                - dynamodb:UpdateItem
+              Resource:
+                - !GetAtt PurchaseApprovalTable.Arn
+                - !Sub '${PurchaseApprovalTable.Arn}/index/GSI2'
+        - Statement:
+            - Effect: Allow
+              Action:
+                - states:SendTaskSuccess
+                - states:SendTaskFailure
+              Resource: '*'
+      Events:
+        SubmitDecision:
+          Type: Api
+          Properties:
+            RestApiId: !Ref PurchaseApi
+            Path: /api/approvals/{approvalToken}/decision
+            Method: POST
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: false
+        Target: es2022
+        Sourcemap: true
+
 Outputs:
   ApiUrl:
     Description: REST API base URL

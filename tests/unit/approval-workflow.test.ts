@@ -1,4 +1,7 @@
-import { StartExecutionCommand } from '@aws-sdk/client-sfn';
+import {
+  SendTaskSuccessCommand,
+  StartExecutionCommand,
+} from '@aws-sdk/client-sfn';
 import { describe, expect, it, vi } from 'vitest';
 import { StepFunctionsApprovalWorkflow } from '../../src/infrastructure/approval-workflow';
 
@@ -35,5 +38,68 @@ describe('StepFunctionsApprovalWorkflow', () => {
     >[1]);
 
     await expect(workflow.start('req-1')).rejects.toThrow('throttled');
+  });
+
+  it('reports the decision through the task token', async () => {
+    const send = vi.fn().mockResolvedValue({});
+    const workflow = new StepFunctionsApprovalWorkflow(stateMachineArn, {
+      send,
+    } as unknown as ConstructorParameters<
+      typeof StepFunctionsApprovalWorkflow
+    >[1]);
+
+    const result = await workflow.reportDecision('task-token-1', 'APPROVED');
+
+    expect(result).toBe('DELIVERED');
+
+    const command = send.mock.calls[0][0] as SendTaskSuccessCommand;
+    expect(command).toBeInstanceOf(SendTaskSuccessCommand);
+    expect(command.input).toEqual({
+      taskToken: 'task-token-1',
+      output: JSON.stringify({ decision: 'APPROVED' }),
+    });
+  });
+
+  it('treats an already consumed task as delivered', async () => {
+    const taskGone = new Error('Task does not exist');
+    taskGone.name = 'TaskDoesNotExist';
+    const send = vi.fn().mockRejectedValue(taskGone);
+    const workflow = new StepFunctionsApprovalWorkflow(stateMachineArn, {
+      send,
+    } as unknown as ConstructorParameters<
+      typeof StepFunctionsApprovalWorkflow
+    >[1]);
+
+    await expect(
+      workflow.reportDecision('task-token-1', 'APPROVED'),
+    ).resolves.toBe('ALREADY_DELIVERED');
+  });
+
+  it('treats a timed out task as delivered', async () => {
+    const timedOut = new Error('Task timed out');
+    timedOut.name = 'TaskTimedOut';
+    const send = vi.fn().mockRejectedValue(timedOut);
+    const workflow = new StepFunctionsApprovalWorkflow(stateMachineArn, {
+      send,
+    } as unknown as ConstructorParameters<
+      typeof StepFunctionsApprovalWorkflow
+    >[1]);
+
+    await expect(
+      workflow.reportDecision('task-token-1', 'REJECTED'),
+    ).resolves.toBe('ALREADY_DELIVERED');
+  });
+
+  it('propagates unexpected callback failures', async () => {
+    const send = vi.fn().mockRejectedValue(new Error('throttled'));
+    const workflow = new StepFunctionsApprovalWorkflow(stateMachineArn, {
+      send,
+    } as unknown as ConstructorParameters<
+      typeof StepFunctionsApprovalWorkflow
+    >[1]);
+
+    await expect(
+      workflow.reportDecision('task-token-1', 'APPROVED'),
+    ).rejects.toThrow('throttled');
   });
 });

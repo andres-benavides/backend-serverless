@@ -62,6 +62,9 @@ export interface ApproverItem {
   otpExpiresAt?: string;
   otpAttempts?: number;
   otpVerifiedAt?: string;
+  signedAt?: string;
+  rejectedAt?: string;
+  callbackSentAt?: string;
   createdAt: string;
   updatedAt: string;
   GSI2PK: string;
@@ -84,9 +87,12 @@ export type ApproverSummary = Omit<
   | 'otpHash'
   | 'otpExpiresAt'
   | 'otpAttempts'
+  | 'callbackSentAt'
   | 'GSI2PK'
   | 'GSI2SK'
 >;
+
+export type ApprovalDecision = 'APPROVE' | 'REJECT';
 
 export interface PurchaseRequestDetail {
   request: PurchaseRequestSummary;
