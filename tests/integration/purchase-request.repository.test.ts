@@ -152,4 +152,34 @@ describe.skipIf(!enabled)('PurchaseRequestRepository (DynamoDB Local)', () => {
 
     expect(items).toEqual([]);
   });
+
+  it('finds the approver through GSI2 using its public token', async () => {
+    const approver = await repository.findApproverByToken('token-2');
+
+    expect(approver?.approverId).toBe('approver-2');
+    expect(approver?.order).toBe(2);
+    expect(approver?.requestId).toBe(requestId);
+  });
+
+  it('returns undefined for an unknown approval token', async () => {
+    const approver = await repository.findApproverByToken(
+      'token-does-not-exist',
+    );
+
+    expect(approver).toBeUndefined();
+  });
+
+  it('reads the request metadata item on its own', async () => {
+    const metadata = await repository.findRequestMetadata(requestId);
+
+    expect(metadata?.SK).toBe('METADATA');
+    expect(metadata?.entityType).toBe('PURCHASE_REQUEST');
+    expect(metadata?.currentApproverOrder).toBe(1);
+  });
+
+  it('returns undefined when the request metadata does not exist', async () => {
+    const metadata = await repository.findRequestMetadata('does-not-exist');
+
+    expect(metadata).toBeUndefined();
+  });
 });

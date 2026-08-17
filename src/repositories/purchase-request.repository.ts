@@ -66,4 +66,40 @@ export class PurchaseRequestRepository {
 
     return requests;
   }
+
+  async findApproverByToken(
+    approvalToken: string,
+  ): Promise<ApproverItem | undefined> {
+    const result = await dynamodb.send(
+      new QueryCommand({
+        TableName: this.tableName,
+        IndexName: 'GSI2',
+        KeyConditionExpression: 'GSI2PK = :gsi2pk',
+        ExpressionAttributeValues: {
+          ':gsi2pk': `APPROVAL_TOKEN#${approvalToken}`,
+        },
+        Limit: 1,
+      }),
+    );
+
+    return (result.Items ?? [])[0] as ApproverItem | undefined;
+  }
+
+  async findRequestMetadata(
+    requestId: string,
+  ): Promise<PurchaseRequestItem | undefined> {
+    const result = await dynamodb.send(
+      new QueryCommand({
+        TableName: this.tableName,
+        KeyConditionExpression: 'PK = :pk AND SK = :sk',
+        ExpressionAttributeValues: {
+          ':pk': `REQUEST#${requestId}`,
+          ':sk': 'METADATA',
+        },
+        Limit: 1,
+      }),
+    );
+
+    return (result.Items ?? [])[0] as PurchaseRequestItem | undefined;
+  }
 }

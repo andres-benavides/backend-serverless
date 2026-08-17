@@ -60,3 +60,19 @@ export interface ApproverItem {
   GSI2PK: string;
   GSI2SK: string;
 }
+
+export interface ApprovalView {
+  status: ApprovalStatus;
+  active: boolean;
+  requiresOtp: boolean;
+}
+
+export type ApproverSummary = Omit<
+  ApproverItem,
+  'PK' | 'SK' | 'entityType' | 'approvalToken' | 'GSI2PK' | 'GSI2SK'
+>;
+
+export interface PurchaseRequestDetail {
+  request: PurchaseRequestSummary;
+  approvers: ApproverSummary[];
+}

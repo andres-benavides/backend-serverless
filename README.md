@@ -41,6 +41,50 @@ sam deploy --guided
 - Approval order is sequential, interpreting "firmas concatenadas" as ordered approvals.
 - The approval token is generated at request creation but never returned by the normal request-detail endpoint.
 
+## Endpoints
+
+| Metodo | Ruta                             | Descripcion                                                  |
+| ------ | -------------------------------- | ------------------------------------------------------------ |
+| POST   | `/api/requests`                  | Crea la solicitud junto a sus 3 aprobadores de forma atomica |
+| GET    | `/api/requests/{id}`             | Detalle de la solicitud y estado de cada aprobador           |
+| GET    | `/api/requests?requesterId=`     | Solicitudes de un solicitante, via Query sobre GSI1          |
+| GET    | `/api/approvals/{approvalToken}` | Estado minimo de una aprobacion, via Query sobre GSI2        |
+
+### GET /api/approvals/{approvalToken}
+
+Es el punto de entrada publico del aprobador. Antes de validar el OTP no expone ningun dato
+de la compra:
+
+```json
+{
+  "approval": {
+    "status": "PENDING",
+    "active": true,
+    "requiresOtp": true
+  }
+}
+```
+
+`active` es verdadero solo cuando la solicitud sigue en `PENDING`, el aprobador sigue en
+`PENDING` y su `order` coincide con el `currentApproverOrder` de la solicitud. Eso es lo que
+impide que los aprobadores 2 y 3 empiecen antes de su turno.
+
+La respuesta nunca incluye `approvalToken`, `taskToken`, `otpHash`, claves `PK`/`SK`, claves
+de GSI, ni titulo, descripcion o monto.
+
+| Caso                              | Respuesta                           |
+| --------------------------------- | ----------------------------------- |
+| Token valido y aprobador activo   | 200 con `active: true`              |
+| Token valido fuera de turno       | 200 con `active: false`             |
+| Aprobacion ya firmada o rechazada | 200 con el estado y `active: false` |
+| Solicitud rechazada o completada  | 200 con `active: false`             |
+| Token inexistente                 | 404                                 |
+| Token con formato invalido        | 400                                 |
+
+Se responde 200 con `active: false` en vez de 409 porque es una consulta de estado: el
+frontend necesita saber en que situacion esta la aprobacion para decidir que pantalla
+mostrar, y un error no transporta esa informacion.
+
 ## Despliegue
 
 ### Requisitos

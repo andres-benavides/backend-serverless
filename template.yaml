@@ -77,7 +77,6 @@ Resources:
               Action:
                 - dynamodb:TransactWriteItems
                 - dynamodb:PutItem
-                - dynamodb:ConditionCheckItem
               Resource: !GetAtt PurchaseApprovalTable.Arn
       Events:
         CreateRequest:
@@ -135,6 +134,33 @@ Resources:
           Properties:
             RestApiId: !Ref PurchaseApi
             Path: /api/requests
+            Method: GET
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: false
+        Target: es2022
+        Sourcemap: true
+
+  GetApprovalFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ./
+      Handler: src/handlers/get-approval.handler
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:Query
+              Resource:
+                - !GetAtt PurchaseApprovalTable.Arn
+                - !Sub '${PurchaseApprovalTable.Arn}/index/GSI2'
+      Events:
+        GetApproval:
+          Type: Api
+          Properties:
+            RestApiId: !Ref PurchaseApi
+            Path: /api/approvals/{approvalToken}
             Method: GET
     Metadata:
       BuildMethod: esbuild
