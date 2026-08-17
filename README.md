@@ -213,6 +213,66 @@ La bandeja global se resuelve por GSI1 con `GSI1PK = MOCK_MAIL` y
 `GSI1SK = SENT_AT#{sentAt}#MAIL#{mailId}`, ordenada descendente. Reutiliza el indice existente
 en vez de anadir uno nuevo, y no interfiere con las consultas por `REQUESTER#`.
 
+## OTP
+
+Cada aprobador debe validar un codigo de 6 digitos antes de poder ver el detalle de la compra.
+
+```http
+POST /api/approvals/{approvalToken}/otp
+POST /api/approvals/{approvalToken}/otp/verify
+```
+
+`POST /otp` genera el codigo y lo entrega por el canal de correo simulado. La respuesta
+devuelve solo la expiracion, nunca el codigo:
+
+```json
+{ "otp": { "expiresAt": "2026-08-17T01:38:40.676Z" } }
+```
+
+`POST /otp/verify` recibe `{ "otp": "861385" }`. Si acierta, responde con el detalle de la
+compra, que es lo que el aprobador necesita para decidir.
+
+### Almacenamiento
+
+Solo se guarda `sha256(approverId:otp)`, nunca el codigo en claro. El `approverId` actua como
+sal, de modo que el mismo codigo produce hashes distintos para aprobadores distintos. La
+comparacion usa `timingSafeEqual`.
+
+Un hash rapido es suficiente aqui porque el codigo vive 3 minutos y admite 5 intentos: la
+proteccion real contra fuerza bruta es el limite de intentos, no el coste del hash. El hash
+existe para no almacenar el secreto en reposo.
+
+### Expiracion
+
+`otpExpiresAt` se compara **explicitamente** contra el reloj en cada verificacion. No se usa
+el TTL de DynamoDB para decidir validez: su borrado puede tardar hasta 48 horas y aceptaria
+codigos vencidos. El TTL solo serviria como limpieza.
+
+### Intentos
+
+`otpAttempts` se incrementa con `ADD` atomico en cada fallo. Al llegar a 5 el codigo queda
+bloqueado y hay que pedir uno nuevo, lo que reinicia el contador.
+
+| Caso                               | Respuesta                       |
+| ---------------------------------- | ------------------------------- |
+| Codigo correcto                    | 200 con el detalle de la compra |
+| Codigo incorrecto                  | 401 con `attemptsLeft`          |
+| Codigo vencido                     | 409                             |
+| 5 intentos agotados                | 409                             |
+| Sin codigo solicitado              | 409                             |
+| Fuera de turno o solicitud cerrada | 409                             |
+| Formato invalido                   | 400                             |
+| Token inexistente                  | 404                             |
+
+Comprobado end to end contra AWS: los 5 intentos degradan `attemptsLeft` de 4 a 0 y el sexto
+devuelve 409.
+
+### Manejo de errores centralizado
+
+`src/shared/http-errors.ts` traduce los errores de dominio (`NotFoundError`, `ConflictError`,
+`UnauthorizedError`, `ZodError`) a codigos HTTP en un unico lugar. Los handlers solo delegan,
+y ningun stack trace llega al cliente.
+
 ## Despliegue
 
 ### Requisitos
