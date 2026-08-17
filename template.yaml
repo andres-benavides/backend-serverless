@@ -19,6 +19,7 @@ Globals:
         TABLE_NAME: !Ref PurchaseApprovalTable
         DYNAMODB_ENDPOINT: ''
         APP_BASE_URL: !Ref AppBaseUrl
+        EVIDENCE_BUCKET: !Ref EvidenceBucket
 
 Resources:
   PurchaseApi:
@@ -232,6 +233,7 @@ Resources:
       DefinitionSubstitutions:
         ActivateApproverFunctionArn: !GetAtt ActivateApproverFunction.Arn
         FinalizeRequestFunctionArn: !GetAtt FinalizeRequestFunction.Arn
+        GenerateEvidenceFunctionArn: !GetAtt GenerateEvidenceFunction.Arn
       Policies:
         - Statement:
             - Effect: Allow
@@ -240,6 +242,7 @@ Resources:
               Resource:
                 - !GetAtt ActivateApproverFunction.Arn
                 - !GetAtt FinalizeRequestFunction.Arn
+                - !GetAtt GenerateEvidenceFunction.Arn
         - Statement:
             - Effect: Allow
               Action:
@@ -382,6 +385,77 @@ Resources:
         Target: es2022
         Sourcemap: true
 
+  EvidenceBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      VersioningConfiguration:
+        Status: Enabled
+
+  GenerateEvidenceFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ./
+      Handler: src/handlers/generate-evidence.handler
+      Timeout: 30
+      MemorySize: 512
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:Query
+                - dynamodb:UpdateItem
+              Resource: !GetAtt PurchaseApprovalTable.Arn
+        - Statement:
+            - Effect: Allow
+              Action:
+                - s3:PutObject
+              Resource: !Sub '${EvidenceBucket.Arn}/*'
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: false
+        Target: es2022
+        Sourcemap: true
+
+  GetEvidenceFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ./
+      Handler: src/handlers/get-evidence.handler
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:Query
+              Resource: !GetAtt PurchaseApprovalTable.Arn
+        - Statement:
+            - Effect: Allow
+              Action:
+                - s3:GetObject
+              Resource: !Sub '${EvidenceBucket.Arn}/*'
+      Events:
+        GetEvidence:
+          Type: Api
+          Properties:
+            RestApiId: !Ref PurchaseApi
+            Path: /api/requests/{id}/evidence
+            Method: GET
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: false
+        Target: es2022
+        Sourcemap: true
+
 Outputs:
   ApiUrl:
     Description: REST API base URL
@@ -392,3 +466,6 @@ Outputs:
   StateMachineArn:
     Description: Approval workflow state machine
     Value: !Ref ApprovalStateMachine
+  EvidenceBucketName:
+    Description: Private bucket holding the evidence PDFs
+    Value: !Ref EvidenceBucket

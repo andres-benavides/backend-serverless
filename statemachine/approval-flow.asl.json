@@ -99,12 +99,26 @@
       "Default": "RejectRequest"
     },
     "GenerateEvidence": {
-      "Type": "Pass",
-      "Comment": "Placeholder replaced by the PDF generation task in phase 7",
-      "ResultPath": "$.evidence",
-      "Result": {
-        "generated": false
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${GenerateEvidenceFunctionArn}",
+        "Payload": {
+          "requestId.$": "$.requestId"
+        }
       },
+      "ResultSelector": {
+        "evidenceKey.$": "$.Payload.evidenceKey"
+      },
+      "ResultPath": "$.evidence",
+      "Retry": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
       "Next": "CompleteRequest"
     },
     "CompleteRequest": {

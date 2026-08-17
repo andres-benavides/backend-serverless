@@ -322,4 +322,23 @@ export class PurchaseRequestRepository {
       }),
     );
   }
+
+  async saveEvidenceKey(
+    requestId: string,
+    evidenceKey: string,
+    generatedAt: string,
+  ): Promise<void> {
+    await dynamodb.send(
+      new UpdateCommand({
+        TableName: this.tableName,
+        Key: { PK: `REQUEST#${requestId}`, SK: 'METADATA' },
+        UpdateExpression:
+          'SET evidenceKey = :key, evidenceGeneratedAt = :at, updatedAt = :at',
+        ExpressionAttributeValues: {
+          ':key': evidenceKey,
+          ':at': generatedAt,
+        },
+      }),
+    );
+  }
 }

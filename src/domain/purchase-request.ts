@@ -33,6 +33,8 @@ export interface PurchaseRequestItem {
   status: RequestStatus;
   currentApproverOrder: number;
   executionArn?: string;
+  evidenceKey?: string;
+  evidenceGeneratedAt?: string;
   createdAt: string;
   updatedAt: string;
   GSI1PK: string;
