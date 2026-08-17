@@ -474,22 +474,44 @@ sobrescribe apuntando al contenedor.
 ## Pruebas
 
 ```bash
-npm test              # unitarias
-npm run test:coverage # unitarias + reporte de cobertura
+npm test              # unitarias + integracion
+npm run test:coverage # con reporte de cobertura
 npm run test:integration
 ```
 
-Las pruebas de integracion corren contra DynamoDB Local: crean su propia tabla con nombre
-unico, la usan y la borran al terminar.
+```
+228 pruebas | 26 archivos
+Cobertura: 97% sentencias | 89% ramas | 98% funciones
+```
 
-No hay que activarlas a mano. `tests/setup.mts` comprueba si DynamoDB Local responde y decide:
+El umbral configurado en `vitest.config.mts` es 85% (sentencias, lineas y funciones) y 80% en
+ramas, por encima del 60% que exige la prueba. Por debajo de eso el comando falla.
 
-| Situacion                    | Resultado                                               |
-| ---------------------------- | ------------------------------------------------------- |
-| `npm run local:up` levantado | Las 31 pruebas corren                                   |
-| Sin Docker                   | Las 4 de integracion se saltan, las 27 unitarias corren |
-| `RUN_INTEGRATION_TESTS=0`    | Se saltan aunque la base este arriba                    |
-| `RUN_INTEGRATION_TESTS=1`    | Se fuerzan, y fallan si la base no responde             |
+### Unitarias
 
-El umbral de cobertura esta fijado en 60% para lineas, funciones, ramas y sentencias en
-`vitest.config.mts`; por debajo de eso el comando falla.
+Cubren servicios, schemas, handlers, generacion del PDF, helpers de OTP y el mapeo
+centralizado de errores. El SDK de AWS se mockea, asi que **no necesitan una cuenta de AWS**.
+
+Varias son pruebas de seguridad explicitas: que la API nunca devuelva `approvalToken`,
+`taskToken`, `otpHash`, `executionArn` ni claves de DynamoDB; que el OTP no viaje en la
+respuesta; que los logs no incluyan el task token; y que un error inesperado no filtre stack
+traces ni ARNs.
+
+### Integracion
+
+Corren contra DynamoDB Local con el repositorio real. Crean su propia tabla con nombre unico y
+la borran al terminar.
+
+Su valor esta en lo que un mock no puede verificar: que las `ConditionExpression` realmente
+funcionen. Comprueban que dos decisiones simultaneas sobre el mismo aprobador dejen pasar solo
+una, que el contador de intentos de OTP se incremente de forma atomica bajo concurrencia, que
+una solicitud cerrada no se pueda reabrir y que no se pueda firmar sin OTP verificado.
+
+No hay que activarlas a mano: `tests/setup.mts` comprueba si DynamoDB Local responde y decide.
+
+| Situacion                    | Resultado                                  |
+| ---------------------------- | ------------------------------------------ |
+| `npm run local:up` levantado | Corren todas                               |
+| Sin Docker                   | Se saltan las de integracion               |
+| `RUN_INTEGRATION_TESTS=0`    | Se saltan aunque la base este arriba       |
+| `RUN_INTEGRATION_TESTS=1`    | Se fuerzan y fallan si la base no responde |

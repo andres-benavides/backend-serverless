@@ -3,13 +3,31 @@ import type {
   APIGatewayProxyResult,
   Context,
 } from 'aws-lambda';
+import type * as Sfn from '@aws-sdk/client-sfn';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { create } = vi.hoisted(() => ({ create: vi.fn() }));
+const { create, saveExecutionArn } = vi.hoisted(() => ({
+  create: vi.fn(),
+  saveExecutionArn: vi.fn(),
+}));
+
+const sfnMock = vi.hoisted(() => ({ send: vi.fn() }));
+
+vi.mock('@aws-sdk/client-sfn', async () => {
+  const actual = await vi.importActual<typeof Sfn>('@aws-sdk/client-sfn');
+
+  return {
+    ...actual,
+    SFNClient: class {
+      send = sfnMock.send;
+    },
+  };
+});
 
 vi.mock('../../src/repositories/purchase-request.repository', () => ({
   PurchaseRequestRepository: class {
     create = create;
+    saveExecutionArn = saveExecutionArn;
   },
 }));
 
@@ -58,6 +76,10 @@ describe('create-request handler', () => {
   beforeEach(() => {
     create.mockReset();
     create.mockResolvedValue(undefined);
+    saveExecutionArn.mockReset();
+    saveExecutionArn.mockResolvedValue(undefined);
+    sfnMock.send.mockReset();
+    sfnMock.send.mockResolvedValue({ executionArn: 'arn:execution:1' });
   });
 
   it('returns 201 with the created request summary', async () => {
@@ -116,6 +138,35 @@ describe('create-request handler', () => {
     expect(parse<ErrorBody>(response.body).message).toBe(
       'Internal server error',
     );
+
+    consoleError.mockRestore();
+  });
+
+  it('starts the approval workflow and stores its execution arn', async () => {
+    await invoke(JSON.stringify(validBody));
+
+    expect(sfnMock.send).toHaveBeenCalledTimes(1);
+    expect(saveExecutionArn).toHaveBeenCalledWith(
+      expect.any(String),
+      'arn:execution:1',
+    );
+  });
+
+  it('never returns the execution arn to the client', async () => {
+    const response = await invoke(JSON.stringify(validBody));
+
+    expect(response.body).not.toContain('arn:execution:1');
+  });
+
+  it('returns 500 when the workflow cannot be started', async () => {
+    sfnMock.send.mockRejectedValue(new Error('states unavailable'));
+    const consoleError = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => undefined);
+
+    const response = await invoke(JSON.stringify(validBody));
+
+    expect(response.statusCode).toBe(500);
 
     consoleError.mockRestore();
   });

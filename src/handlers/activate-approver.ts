@@ -1,8 +1,8 @@
 import { MockMailSender } from '../infrastructure/mail-sender';
 import { MockMailRepository } from '../repositories/mock-mail.repository';
 import { PurchaseRequestRepository } from '../repositories/purchase-request.repository';
-import { ActivateApproverService } from '../services/activate-approver.service';
 import type { ActivateApproverInput } from '../services/activate-approver.service';
+import { ActivateApproverService } from '../services/activate-approver.service';
 
 const tableName = process.env.TABLE_NAME;
 if (!tableName) throw new Error('TABLE_NAME is required');

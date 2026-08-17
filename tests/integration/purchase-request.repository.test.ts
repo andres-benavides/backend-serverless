@@ -53,6 +53,7 @@ const approverItems: ApproverItem[] = [1, 2, 3].map((order) => ({
   email: `approver${order}@example.com`,
   status: 'PENDING',
   approvalToken: `token-${order}`,
+  taskToken: `seed-task-${order}`,
   createdAt: '2026-08-16T20:00:00.000Z',
   updatedAt: '2026-08-16T20:00:00.000Z',
   GSI2PK: `APPROVAL_TOKEN#token-${order}`,
@@ -233,5 +234,141 @@ describe.skipIf(!enabled)('PurchaseRequestRepository (DynamoDB Local)', () => {
         'task-token-3',
       ),
     ).rejects.toThrow();
+  });
+
+  it('stores only the otp hash and resets the attempt counter', async () => {
+    await repository.saveOtp(
+      requestId,
+      'APPROVER#01#approver-1',
+      'hashed-code',
+      '2099-01-01T00:00:00.000Z',
+    );
+
+    const approver = await repository.findApproverByOrder(requestId, 1);
+
+    expect(approver?.otpHash).toBe('hashed-code');
+    expect(approver?.otpAttempts).toBe(0);
+    expect(approver?.otpVerifiedAt).toBeUndefined();
+  });
+
+  it('increments the attempt counter atomically', async () => {
+    const results = await Promise.all([
+      repository.incrementOtpAttempts(requestId, 'APPROVER#01#approver-1'),
+      repository.incrementOtpAttempts(requestId, 'APPROVER#01#approver-1'),
+      repository.incrementOtpAttempts(requestId, 'APPROVER#01#approver-1'),
+    ]);
+
+    expect(new Set(results).size).toBe(3);
+    expect(Math.max(...results)).toBe(3);
+  });
+
+  it('clears the verification when a new otp is issued', async () => {
+    await repository.markOtpVerified(
+      requestId,
+      'APPROVER#01#approver-1',
+      '2026-08-17T10:00:00.000Z',
+    );
+    await repository.saveOtp(
+      requestId,
+      'APPROVER#01#approver-1',
+      'another-hash',
+      '2099-01-01T00:00:00.000Z',
+    );
+
+    const approver = await repository.findApproverByOrder(requestId, 1);
+
+    expect(approver?.otpVerifiedAt).toBeUndefined();
+    expect(approver?.otpAttempts).toBe(0);
+  });
+
+  it('refuses to record a decision before the otp is verified', async () => {
+    await expect(
+      repository.recordDecision(
+        requestId,
+        'APPROVER#01#approver-1',
+        'SIGNED',
+        '2026-08-17T10:00:00.000Z',
+      ),
+    ).rejects.toThrow();
+  });
+
+  it('records the decision once and rejects the second attempt', async () => {
+    await repository.markOtpVerified(
+      requestId,
+      'APPROVER#01#approver-1',
+      '2026-08-17T10:00:00.000Z',
+    );
+
+    const updated = await repository.recordDecision(
+      requestId,
+      'APPROVER#01#approver-1',
+      'SIGNED',
+      '2026-08-17T10:01:00.000Z',
+    );
+
+    expect(updated.status).toBe('SIGNED');
+    expect(updated.signedAt).toBe('2026-08-17T10:01:00.000Z');
+    expect(updated.taskToken).toBe('seed-task-1');
+
+    await expect(
+      repository.recordDecision(
+        requestId,
+        'APPROVER#01#approver-1',
+        'REJECTED',
+        '2026-08-17T10:02:00.000Z',
+      ),
+    ).rejects.toThrow();
+  });
+
+  it('only lets one of two simultaneous decisions win', async () => {
+    await repository.markOtpVerified(
+      requestId,
+      'APPROVER#03#approver-3',
+      '2026-08-17T10:00:00.000Z',
+    );
+
+    const results = await Promise.allSettled([
+      repository.recordDecision(
+        requestId,
+        'APPROVER#03#approver-3',
+        'SIGNED',
+        '2026-08-17T10:01:00.000Z',
+      ),
+      repository.recordDecision(
+        requestId,
+        'APPROVER#03#approver-3',
+        'REJECTED',
+        '2026-08-17T10:01:00.000Z',
+      ),
+    ]);
+
+    const fulfilled = results.filter((r) => r.status === 'fulfilled');
+
+    expect(fulfilled).toHaveLength(1);
+  });
+
+  it('marks the callback as sent', async () => {
+    await repository.markCallbackSent(
+      requestId,
+      'APPROVER#03#approver-3',
+      '2026-08-17T10:05:00.000Z',
+    );
+
+    const approver = await repository.findApproverByOrder(requestId, 3);
+
+    expect(approver?.callbackSentAt).toBe('2026-08-17T10:05:00.000Z');
+  });
+
+  it('stores the evidence key on the metadata item', async () => {
+    await repository.saveEvidenceKey(
+      requestId,
+      'requests/e2e-request/evidence.pdf',
+      '2026-08-17T10:10:00.000Z',
+    );
+
+    const metadata = await repository.findRequestMetadata(requestId);
+
+    expect(metadata?.evidenceKey).toBe('requests/e2e-request/evidence.pdf');
+    expect(metadata?.evidenceGeneratedAt).toBe('2026-08-17T10:10:00.000Z');
   });
 });
