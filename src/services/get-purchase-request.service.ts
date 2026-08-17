@@ -31,6 +31,9 @@ const toApproverSummary = (item: ApproverItem): ApproverSummary => {
     entityType: _entityType,
     approvalToken: _approvalToken,
     taskToken: _taskToken,
+    otpHash: _otpHash,
+    otpExpiresAt: _otpExpiresAt,
+    otpAttempts: _otpAttempts,
     GSI2PK: _gsi2pk,
     GSI2SK: _gsi2sk,
     ...summary

@@ -2,6 +2,8 @@ import type { MailSender } from '../infrastructure/mail-sender';
 import type { PurchaseRequestRepository } from '../repositories/purchase-request.repository';
 import { NotFoundError } from '../shared/errors';
 
+type ApprovalMailSender = Pick<MailSender, 'sendApprovalMail'>;
+
 export interface ActivateApproverInput {
   requestId: string;
   order: number;
@@ -11,7 +13,7 @@ export interface ActivateApproverInput {
 export class ActivateApproverService {
   constructor(
     private readonly repository: PurchaseRequestRepository,
-    private readonly mailSender?: MailSender,
+    private readonly mailSender?: ApprovalMailSender,
   ) {}
 
   async execute({

@@ -210,4 +210,72 @@ export class PurchaseRequestRepository {
       }),
     );
   }
+
+  async saveOtp(
+    requestId: string,
+    approverSortKey: string,
+    otpHash: string,
+    expiresAt: string,
+  ): Promise<void> {
+    await dynamodb.send(
+      new UpdateCommand({
+        TableName: this.tableName,
+        Key: { PK: `REQUEST#${requestId}`, SK: approverSortKey },
+        UpdateExpression:
+          'SET otpHash = :otpHash, otpExpiresAt = :expiresAt, otpAttempts = :zero, updatedAt = :now REMOVE otpVerifiedAt',
+        ConditionExpression: '#status = :pending',
+        ExpressionAttributeNames: { '#status': 'status' },
+        ExpressionAttributeValues: {
+          ':otpHash': otpHash,
+          ':expiresAt': expiresAt,
+          ':zero': 0,
+          ':pending': 'PENDING',
+          ':now': new Date().toISOString(),
+        },
+      }),
+    );
+  }
+
+  async incrementOtpAttempts(
+    requestId: string,
+    approverSortKey: string,
+  ): Promise<number> {
+    const result = await dynamodb.send(
+      new UpdateCommand({
+        TableName: this.tableName,
+        Key: { PK: `REQUEST#${requestId}`, SK: approverSortKey },
+        UpdateExpression:
+          'SET otpAttempts = if_not_exists(otpAttempts, :zero) + :one, updatedAt = :now',
+        ExpressionAttributeValues: {
+          ':zero': 0,
+          ':one': 1,
+          ':now': new Date().toISOString(),
+        },
+        ReturnValues: 'UPDATED_NEW',
+      }),
+    );
+
+    return (result.Attributes?.otpAttempts as number | undefined) ?? 0;
+  }
+
+  async markOtpVerified(
+    requestId: string,
+    approverSortKey: string,
+    verifiedAt: string,
+  ): Promise<void> {
+    await dynamodb.send(
+      new UpdateCommand({
+        TableName: this.tableName,
+        Key: { PK: `REQUEST#${requestId}`, SK: approverSortKey },
+        UpdateExpression:
+          'SET otpVerifiedAt = :verifiedAt, updatedAt = :verifiedAt',
+        ConditionExpression: '#status = :pending',
+        ExpressionAttributeNames: { '#status': 'status' },
+        ExpressionAttributeValues: {
+          ':verifiedAt': verifiedAt,
+          ':pending': 'PENDING',
+        },
+      }),
+    );
+  }
 }

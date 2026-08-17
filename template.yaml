@@ -291,6 +291,63 @@ Resources:
         Target: es2022
         Sourcemap: true
 
+  RequestOtpFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ./
+      Handler: src/handlers/request-otp.handler
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:Query
+                - dynamodb:UpdateItem
+                - dynamodb:PutItem
+              Resource:
+                - !GetAtt PurchaseApprovalTable.Arn
+                - !Sub '${PurchaseApprovalTable.Arn}/index/GSI2'
+      Events:
+        RequestOtp:
+          Type: Api
+          Properties:
+            RestApiId: !Ref PurchaseApi
+            Path: /api/approvals/{approvalToken}/otp
+            Method: POST
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: false
+        Target: es2022
+        Sourcemap: true
+
+  VerifyOtpFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ./
+      Handler: src/handlers/verify-otp.handler
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:Query
+                - dynamodb:UpdateItem
+              Resource:
+                - !GetAtt PurchaseApprovalTable.Arn
+                - !Sub '${PurchaseApprovalTable.Arn}/index/GSI2'
+      Events:
+        VerifyOtp:
+          Type: Api
+          Properties:
+            RestApiId: !Ref PurchaseApi
+            Path: /api/approvals/{approvalToken}/otp/verify
+            Method: POST
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: false
+        Target: es2022
+        Sourcemap: true
+
 Outputs:
   ApiUrl:
     Description: REST API base URL

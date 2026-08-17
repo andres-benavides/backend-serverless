@@ -58,6 +58,10 @@ export interface ApproverItem {
   approvalToken: string;
   taskToken?: string;
   activatedAt?: string;
+  otpHash?: string;
+  otpExpiresAt?: string;
+  otpAttempts?: number;
+  otpVerifiedAt?: string;
   createdAt: string;
   updatedAt: string;
   GSI2PK: string;
@@ -77,6 +81,9 @@ export type ApproverSummary = Omit<
   | 'entityType'
   | 'approvalToken'
   | 'taskToken'
+  | 'otpHash'
+  | 'otpExpiresAt'
+  | 'otpAttempts'
   | 'GSI2PK'
   | 'GSI2SK'
 >;
@@ -97,8 +104,11 @@ export interface MockMailItem {
   approverName: string;
   role: string;
   order: number;
+  mailType: 'APPROVAL_LINK' | 'OTP';
   subject: string;
   approvalLink: string;
+  otp?: string;
+  otpExpiresAt?: string;
   sentAt: string;
   GSI1PK: string;
   GSI1SK: string;
@@ -108,3 +118,17 @@ export type MockMailSummary = Omit<
   MockMailItem,
   'PK' | 'SK' | 'entityType' | 'GSI1PK' | 'GSI1SK'
 >;
+
+export interface PurchaseDetailForApprover {
+  requestId: string;
+  title: string;
+  description: string;
+  amount: number;
+  createdAt: string;
+  requester: Requester;
+  approver: {
+    name: string;
+    role: string;
+    order: number;
+  };
+}

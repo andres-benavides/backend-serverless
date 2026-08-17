@@ -7,6 +7,7 @@ const mailItem = (approverId: string, sentAt: string): MockMailItem => ({
   PK: 'REQUEST#req-1',
   SK: `MAIL#${approverId}`,
   entityType: 'MOCK_MAIL',
+  mailType: 'APPROVAL_LINK',
   mailId: `mail-${approverId}`,
   requestId: 'req-1',
   approverId,
