@@ -395,6 +395,108 @@ implemento como `/api/requests/{id}/evidence` por coherencia con el resto de la 
 en ingles, y porque devuelve una URL firmada en JSON en lugar del binario. Si se prefiere la
 ruta literal del enunciado, es solo anadir un evento mas a la misma Lambda.
 
+## Documentacion de la API
+
+La especificacion OpenAPI 3.0 esta en [`docs/openapi.yaml`](docs/openapi.yaml) y cubre los
+nueve endpoints con sus cuerpos, respuestas, codigos HTTP, ejemplos y errores.
+
+Para verla renderizada:
+
+```bash
+npx @redocly/cli preview-docs docs/openapi.yaml
+```
+
+o pegar el archivo en <https://editor.swagger.io>.
+
+La documentacion **no puede desincronizarse** de la implementacion: una prueba compara las
+rutas del `template.yaml` contra las del documento y falla si no coinciden exactamente. Tambien
+verifica que cada operacion tenga resumen, respuestas y un 500 documentado, que todas las
+referencias internas resuelvan, y que no se documente ningun campo interno como parte de una
+respuesta.
+
+## Instrucciones para probar el flujo completo
+
+Todo el recorrido se puede ejecutar con `curl` contra el entorno desplegado. `BASE` es la URL
+del stage.
+
+```bash
+BASE=https://5oxai8sky9.execute-api.us-east-1.amazonaws.com/dev
+```
+
+**1. Crear la solicitud.** Arranca el workflow y activa al primer aprobador.
+
+```bash
+curl -X POST "$BASE/api/requests" \
+  -H 'Content-Type: application/json' \
+  -d @events-create-request.json
+```
+
+**2. Leer el correo simulado.** Solo aparece el del aprobador en turno.
+
+```bash
+curl "$BASE/mock-mail?requestId=<REQUEST_ID>"
+```
+
+El `approvalLink` contiene el `approver_token` que se usa en los pasos siguientes.
+
+**3. Consultar el estado de la aprobacion.** Antes del OTP no expone datos de la compra.
+
+```bash
+curl "$BASE/api/approvals/<APPROVAL_TOKEN>"
+```
+
+**4. Pedir el OTP.** La respuesta trae solo la expiracion; el codigo se lee del buzon simulado.
+
+```bash
+curl -X POST "$BASE/api/approvals/<APPROVAL_TOKEN>/otp"
+curl "$BASE/mock-mail?requestId=<REQUEST_ID>"
+```
+
+**5. Verificar el OTP.** Devuelve el detalle de la compra.
+
+```bash
+curl -X POST "$BASE/api/approvals/<APPROVAL_TOKEN>/otp/verify" \
+  -H 'Content-Type: application/json' \
+  -d '{"otp":"<CODIGO>"}'
+```
+
+**6. Decidir.** Al firmar, el workflow activa al siguiente aprobador y emite su correo.
+
+```bash
+curl -X POST "$BASE/api/approvals/<APPROVAL_TOKEN>/decision" \
+  -H 'Content-Type: application/json' \
+  -d '{"decision":"APPROVE"}'
+```
+
+Repetir los pasos 2 a 6 para los aprobadores 2 y 3.
+
+**7. Descargar la evidencia.** Tras la tercera firma la solicitud pasa a `COMPLETED`.
+
+```bash
+curl "$BASE/api/requests/<REQUEST_ID>/evidence"
+curl -o evidencia.pdf "<URL_PREFIRMADA>"
+```
+
+**Seguimiento del solicitante** en cualquier momento:
+
+```bash
+curl "$BASE/api/requests?requesterId=user-001"
+curl "$BASE/api/requests/<REQUEST_ID>"
+```
+
+### Casos de error que vale la pena probar
+
+| Comprobacion         | Como                                           | Esperado                |
+| -------------------- | ---------------------------------------------- | ----------------------- |
+| Roles repetidos      | Dos aprobadores con el mismo `role`            | 422                     |
+| Fuera de turno       | Consultar el token del aprobador 2 al inicio   | 200 con `active: false` |
+| Decidir sin OTP      | Saltarse los pasos 4 y 5                       | 409                     |
+| OTP incorrecto       | Enviar `000000`                                | 401 con `attemptsLeft`  |
+| Intentos agotados    | Fallar seis veces                              | 409                     |
+| Doble firma          | Repetir el paso 6                              | 409                     |
+| Evidencia anticipada | Paso 7 antes de las tres firmas                | 409                     |
+| Bucket privado       | Abrir la URL de S3 sin los parametros de firma | 403                     |
+
 ## Despliegue
 
 ### Requisitos

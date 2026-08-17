@@ -1,0 +1,803 @@
+openapi: 3.0.3
+info:
+  title: AMM Purchase Approvals API
+  version: 1.0.0
+  description: |
+    Flujo de aprobaciones de compra con firmas concatenadas.
+
+    Una solicitud se crea con tres aprobadores. La orquestacion vive en una maquina de estados
+    de AWS Step Functions que los activa **en orden**: el aprobador 2 no puede actuar hasta que
+    el 1 firme. Cada aprobador recibe un link con su `approvalToken`, valida un OTP de 6 digitos
+    con 3 minutos de vigencia y decide. Al firmar el tercero se genera un PDF de evidencia que
+    se descarga con una URL prefirmada.
+
+    ### Tokens
+
+    | Token | Alcance | Se expone |
+    | --- | --- | --- |
+    | `approvalToken` | Publico, identifica al aprobador en su link | Si |
+    | `taskToken` | Interno de Step Functions | Nunca |
+
+    ### Autenticacion
+
+    Esta version **no implementa autenticacion**. El `requesterId` se recibe del cliente y se
+    confia. En produccion iria detras de un authorizer de API Gateway (Cognito o JWT).
+
+servers:
+  - url: https://5oxai8sky9.execute-api.us-east-1.amazonaws.com/dev
+    description: Entorno de pruebas
+
+tags:
+  - name: Solicitudes
+    description: Creacion y consulta de solicitudes de compra
+  - name: Aprobaciones
+    description: Acceso del aprobador por token, OTP y decision
+  - name: Evidencia
+    description: Descarga del PDF de evidencia
+  - name: Demostracion
+    description: Utilidades para probar el flujo sin SMTP real
+
+paths:
+  /api/requests:
+    post:
+      tags: [Solicitudes]
+      summary: Crear una solicitud de compra
+      description: |
+        Crea la solicitud y sus tres aprobadores de forma atomica con `TransactWriteItems`, e
+        inicia la ejecucion de Step Functions que activa al primer aprobador.
+
+        Los tres roles deben ser distintos y los tres correos tambien.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRequestBody'
+            example:
+              title: Compra de portatiles
+              description: Compra de tres equipos para el equipo de desarrollo
+              amount: 15000000
+              requester:
+                id: user-001
+                name: Solicitante Demo
+                email: requester@example.com
+              approvers:
+                - role: Manager
+                  name: Approver One
+                  email: one@example.com
+                - role: Finance
+                  name: Approver Two
+                  email: two@example.com
+                - role: Director
+                  name: Approver Three
+                  email: three@example.com
+      responses:
+        '201':
+          description: Solicitud creada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreatedRequest'
+              example:
+                requestId: 5035a3cc-a6f7-428d-a2f2-33502b09d8f6
+                status: PENDING
+                createdAt: '2026-08-17T01:46:12.331Z'
+        '400':
+          $ref: '#/components/responses/InvalidBody'
+        '422':
+          description: El cuerpo no cumple las reglas de negocio
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+              example:
+                message: Validation failed
+                errors:
+                  - code: custom
+                    path: [approvers]
+                    message: The three approver roles must be different
+        '500':
+          $ref: '#/components/responses/ServerError'
+    get:
+      tags: [Solicitudes]
+      summary: Listar las solicitudes de un solicitante
+      description: Resuelto con Query sobre GSI1. No usa Scan.
+      parameters:
+        - name: requesterId
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 200
+          example: user-001
+      responses:
+        '200':
+          description: Solicitudes ordenadas de la mas reciente a la mas antigua
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [requests]
+                properties:
+                  requests:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PurchaseRequestSummary'
+        '400':
+          $ref: '#/components/responses/InvalidBody'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /api/requests/{id}:
+    get:
+      tags: [Solicitudes]
+      summary: Detalle de una solicitud y el estado de sus aprobadores
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+      responses:
+        '200':
+          description: Detalle de la solicitud
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [request, approvers]
+                properties:
+                  request:
+                    $ref: '#/components/schemas/PurchaseRequestSummary'
+                  approvers:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ApproverSummary'
+        '400':
+          description: Falta el identificador
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /api/requests/{id}/evidence:
+    get:
+      tags: [Evidencia]
+      summary: Obtener la URL de descarga del PDF de evidencia
+      description: |
+        Devuelve una URL prefirmada de S3 valida por 5 minutos. El bucket es privado: la misma
+        ruta sin firma responde 403.
+
+        La evidencia solo existe despues de que los tres aprobadores firman.
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+      responses:
+        '200':
+          description: URL prefirmada
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [evidence]
+                properties:
+                  evidence:
+                    type: object
+                    required: [url, expiresInSeconds]
+                    properties:
+                      url:
+                        type: string
+                        format: uri
+                      expiresInSeconds:
+                        type: integer
+                        example: 300
+        '400':
+          description: Falta el identificador
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: La evidencia aun no existe
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: The evidence is not available until the three approvers sign
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /api/approvals/{approvalToken}:
+    get:
+      tags: [Aprobaciones]
+      summary: Estado minimo de una aprobacion
+      description: |
+        Punto de entrada publico del aprobador, resuelto con Query sobre GSI2.
+
+        Antes de validar el OTP **no expone ningun dato de la compra**: ni titulo, ni
+        descripcion, ni monto, ni datos del solicitante.
+
+        `active` es verdadero solo cuando la solicitud sigue en `PENDING`, el aprobador sigue en
+        `PENDING` y es su turno. Eso impide que los aprobadores 2 y 3 empiecen antes de tiempo.
+
+        Se responde 200 con `active: false` en vez de un error porque es una consulta de estado:
+        el frontend necesita saber en que situacion esta para elegir que pantalla mostrar.
+      parameters:
+        - $ref: '#/components/parameters/ApprovalToken'
+      responses:
+        '200':
+          description: Estado de la aprobacion
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [approval]
+                properties:
+                  approval:
+                    $ref: '#/components/schemas/ApprovalView'
+              examples:
+                enTurno:
+                  summary: Es su turno
+                  value:
+                    approval:
+                      status: PENDING
+                      active: true
+                      requiresOtp: true
+                fueraDeTurno:
+                  summary: Todavia no es su turno
+                  value:
+                    approval:
+                      status: PENDING
+                      active: false
+                      requiresOtp: false
+                yaFirmada:
+                  summary: Ya decidio
+                  value:
+                    approval:
+                      status: SIGNED
+                      active: false
+                      requiresOtp: false
+        '400':
+          $ref: '#/components/responses/InvalidToken'
+        '404':
+          $ref: '#/components/responses/ApprovalNotFound'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /api/approvals/{approvalToken}/otp:
+    post:
+      tags: [Aprobaciones]
+      summary: Generar un OTP para el aprobador
+      description: |
+        Genera un codigo de 6 digitos valido por 3 minutos y lo entrega por el canal de correo.
+
+        La respuesta **nunca incluye el codigo**, solo su expiracion. En el entorno de pruebas
+        el codigo se lee desde `GET /mock-mail`.
+
+        Solo almacena `sha256(approverId:otp)`. Pedir un codigo nuevo reinicia el contador de
+        intentos.
+      parameters:
+        - $ref: '#/components/parameters/ApprovalToken'
+      responses:
+        '201':
+          description: Codigo generado y enviado
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [otp]
+                properties:
+                  otp:
+                    type: object
+                    required: [expiresAt]
+                    properties:
+                      expiresAt:
+                        type: string
+                        format: date-time
+              example:
+                otp:
+                  expiresAt: '2026-08-17T01:38:40.676Z'
+        '400':
+          $ref: '#/components/responses/InvalidToken'
+        '404':
+          $ref: '#/components/responses/ApprovalNotFound'
+        '409':
+          description: No es el turno de este aprobador o la solicitud esta cerrada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: This approval is not active
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /api/approvals/{approvalToken}/otp/verify:
+    post:
+      tags: [Aprobaciones]
+      summary: Verificar el OTP y ver el detalle de la compra
+      description: |
+        La verificacion correcta habilita al aprobador y devuelve el detalle de la compra.
+
+        La expiracion se compara explicitamente contra el reloj, no con el TTL de DynamoDB.
+        Se permiten 5 intentos; al agotarlos hay que pedir un codigo nuevo.
+      parameters:
+        - $ref: '#/components/parameters/ApprovalToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [otp]
+              properties:
+                otp:
+                  type: string
+                  pattern: '^\d{6}$'
+            example:
+              otp: '861385'
+      responses:
+        '200':
+          description: Codigo correcto
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [purchase]
+                properties:
+                  purchase:
+                    $ref: '#/components/schemas/PurchaseDetailForApprover'
+        '400':
+          $ref: '#/components/responses/InvalidBody'
+        '401':
+          description: Codigo incorrecto
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Error'
+                  - type: object
+                    properties:
+                      attemptsLeft:
+                        type: integer
+              example:
+                message: Invalid OTP
+                attemptsLeft: 4
+        '404':
+          $ref: '#/components/responses/ApprovalNotFound'
+        '409':
+          description: Codigo vencido, intentos agotados, sin codigo solicitado o fuera de turno
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                vencido:
+                  value:
+                    message: The OTP has expired, request a new code
+                intentos:
+                  value:
+                    message: Too many OTP attempts, request a new code
+                sinCodigo:
+                  value:
+                    message: No OTP has been requested for this approval
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /api/approvals/{approvalToken}/decision:
+    post:
+      tags: [Aprobaciones]
+      summary: Aprobar o rechazar la solicitud
+      description: |
+        Registra la firma y reanuda Step Functions.
+
+        Requiere OTP verificado. La escritura es condicional
+        (`status = PENDING AND attribute_exists(otpVerifiedAt) AND attribute_exists(taskToken)`),
+        de modo que un doble click o dos peticiones simultaneas solo dejan pasar una.
+
+        Si un intento anterior escribio la firma pero murio antes de notificar al workflow,
+        reintentar **reenvia solo el callback** en lugar de firmar de nuevo.
+      parameters:
+        - $ref: '#/components/parameters/ApprovalToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [decision]
+              properties:
+                decision:
+                  type: string
+                  enum: [APPROVE, REJECT]
+            example:
+              decision: APPROVE
+      responses:
+        '200':
+          description: Decision registrada y workflow reanudado
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [approval]
+                properties:
+                  approval:
+                    type: object
+                    required: [status, decidedAt]
+                    properties:
+                      status:
+                        type: string
+                        enum: [SIGNED, REJECTED]
+                      decidedAt:
+                        type: string
+                        format: date-time
+              example:
+                approval:
+                  status: SIGNED
+                  decidedAt: '2026-08-17T01:46:28.712Z'
+        '400':
+          $ref: '#/components/responses/InvalidBody'
+        '404':
+          $ref: '#/components/responses/ApprovalNotFound'
+        '409':
+          description: OTP sin verificar o aprobacion ya procesada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                sinOtp:
+                  value:
+                    message: The OTP must be verified before deciding
+                yaProcesada:
+                  value:
+                    message: This approval has already been processed
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /mock-mail:
+    get:
+      tags: [Demostracion]
+      summary: Bandeja de correos simulados
+      description: |
+        **Endpoint de demostracion.** Expone el `approvalToken` y el OTP, que en produccion solo
+        llegarian al buzon del aprobador. Existe para poder probar el flujo sin SMTP y debe
+        eliminarse o protegerse antes de cualquier uso real.
+
+        Devuelve dos tipos de correo: `APPROVAL_LINK` (al activarse el aprobador) y `OTP` (al
+        solicitar un codigo).
+      parameters:
+        - name: requestId
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Filtra los correos de una solicitud
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+      responses:
+        '200':
+          description: Correos, del mas reciente al mas antiguo
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [mails]
+                properties:
+                  mails:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/MockMail'
+        '400':
+          $ref: '#/components/responses/InvalidBody'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+components:
+  parameters:
+    RequestId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+      example: 5035a3cc-a6f7-428d-a2f2-33502b09d8f6
+    ApprovalToken:
+      name: approvalToken
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      example: 4e7841ce-44af-4225-889a-b4b58bcdc53d
+
+  responses:
+    InvalidBody:
+      description: Entrada invalida
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ValidationError'
+    InvalidToken:
+      description: El token no tiene formato de UUID
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ValidationError'
+    NotFound:
+      description: La solicitud no existe
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            message: Purchase request not found
+    ApprovalNotFound:
+      description: El token no corresponde a ninguna aprobacion
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            message: Approval not found
+    ServerError:
+      description: Error inesperado. No expone detalles internos.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            message: Internal server error
+
+  schemas:
+    Error:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+
+    ValidationError:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+          example: Validation failed
+        errors:
+          type: array
+          items:
+            type: object
+
+    Requester:
+      type: object
+      required: [id, name, email]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+
+    ApproverInput:
+      type: object
+      required: [role, name, email]
+      properties:
+        role:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+
+    CreateRequestBody:
+      type: object
+      required: [title, description, amount, requester, approvers]
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        description:
+          type: string
+          minLength: 1
+          maxLength: 2000
+        amount:
+          type: number
+          exclusiveMinimum: true
+          minimum: 0
+        requester:
+          $ref: '#/components/schemas/Requester'
+        approvers:
+          type: array
+          minItems: 3
+          maxItems: 3
+          description: Exactamente tres, con roles y correos distintos entre si
+          items:
+            $ref: '#/components/schemas/ApproverInput'
+
+    CreatedRequest:
+      type: object
+      required: [requestId, status, createdAt]
+      properties:
+        requestId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [PENDING]
+        createdAt:
+          type: string
+          format: date-time
+
+    PurchaseRequestSummary:
+      type: object
+      description: Nunca incluye claves de DynamoDB ni `executionArn`.
+      required:
+        [
+          requestId,
+          title,
+          description,
+          amount,
+          requester,
+          status,
+          currentApproverOrder,
+          createdAt,
+          updatedAt,
+        ]
+      properties:
+        requestId:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        amount:
+          type: number
+        requester:
+          $ref: '#/components/schemas/Requester'
+        status:
+          type: string
+          enum: [PENDING, REJECTED, COMPLETED]
+        currentApproverOrder:
+          type: integer
+          minimum: 1
+          maximum: 3
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    ApproverSummary:
+      type: object
+      description: Nunca incluye `approvalToken`, `taskToken` ni los campos de OTP.
+      required: [approverId, order, role, name, email, status]
+      properties:
+        approverId:
+          type: string
+        order:
+          type: integer
+          minimum: 1
+          maximum: 3
+        role:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        status:
+          type: string
+          enum: [PENDING, SIGNED, REJECTED]
+        activatedAt:
+          type: string
+          format: date-time
+        signedAt:
+          type: string
+          format: date-time
+        rejectedAt:
+          type: string
+          format: date-time
+
+    ApprovalView:
+      type: object
+      required: [status, active, requiresOtp]
+      properties:
+        status:
+          type: string
+          enum: [PENDING, SIGNED, REJECTED]
+        active:
+          type: boolean
+          description: Verdadero solo cuando es el turno de este aprobador
+        requiresOtp:
+          type: boolean
+
+    PurchaseDetailForApprover:
+      type: object
+      required:
+        [requestId, title, description, amount, createdAt, requester, approver]
+      properties:
+        requestId:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        amount:
+          type: number
+        createdAt:
+          type: string
+          format: date-time
+        requester:
+          $ref: '#/components/schemas/Requester'
+        approver:
+          type: object
+          required: [name, role, order]
+          properties:
+            name:
+              type: string
+            role:
+              type: string
+            order:
+              type: integer
+
+    MockMail:
+      type: object
+      required:
+        [
+          mailId,
+          mailType,
+          requestId,
+          approverId,
+          to,
+          subject,
+          approvalLink,
+          sentAt,
+        ]
+      properties:
+        mailId:
+          type: string
+        mailType:
+          type: string
+          enum: [APPROVAL_LINK, OTP]
+        requestId:
+          type: string
+        approverId:
+          type: string
+        to:
+          type: string
+          format: email
+        approverName:
+          type: string
+        role:
+          type: string
+        order:
+          type: integer
+        subject:
+          type: string
+        approvalLink:
+          type: string
+          format: uri
+        otp:
+          type: string
+          description: Solo presente en los correos de tipo OTP
+        otpExpiresAt:
+          type: string
+          format: date-time
+        sentAt:
+          type: string
+          format: date-time
