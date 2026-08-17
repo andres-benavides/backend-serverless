@@ -15,8 +15,7 @@
       "@amm/api": ["./packages/api/src/index.ts"],
       "@amm/ui": ["./packages/ui/src/index.ts"],
       "@amm/ui/styles/globals.css": ["./packages/ui/src/styles.d.ts"]
-    },
-    "baseUrl": "."
+    }
   },
   "include": [
     "packages/*/src",
