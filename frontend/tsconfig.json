@@ -18,5 +18,11 @@
     },
     "baseUrl": "."
   },
-  "include": ["packages/*/src", "apps/*/src", "vitest.config.mts"]
+  "include": [
+    "packages/*/src",
+    "apps/*/src",
+    "tests",
+    "vitest.config.mts",
+    "eslint.config.mjs"
+  ]
 }

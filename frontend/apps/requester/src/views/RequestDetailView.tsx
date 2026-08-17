@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   Alert,
@@ -34,19 +34,26 @@ export const RequestDetailView = () => {
   const [evidenceError, setEvidenceError] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
 
-  const load = useCallback(async () => {
+  useEffect(() => {
     if (requestId === undefined) return;
 
-    try {
-      setDetail(await createApiClient().getRequest(requestId));
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Error inesperado');
-    }
-  }, [requestId]);
+    let cancelled = false;
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+    createApiClient()
+      .getRequest(requestId)
+      .then((result) => {
+        if (!cancelled) setDetail(result);
+      })
+      .catch((cause: unknown) => {
+        if (!cancelled) {
+          setError(cause instanceof Error ? cause.message : 'Error inesperado');
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [requestId]);
 
   const downloadEvidence = async () => {
     if (requestId === undefined) return;

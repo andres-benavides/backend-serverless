@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Alert,
   AlertDescription,
@@ -35,17 +35,26 @@ export const OtpGateView = ({ approvalToken, onVerified }: Props) => {
   const [error, setError] = useState<string | null>(null);
   const [attemptsLeft, setAttemptsLeft] = useState<number | null>(null);
 
-  const load = useCallback(async () => {
-    try {
-      setApproval(await createApiClient().getApproval(approvalToken));
-    } catch (cause) {
-      setLoadError(cause instanceof Error ? cause.message : 'Error inesperado');
-    }
-  }, [approvalToken]);
-
   useEffect(() => {
-    void load();
-  }, [load]);
+    let cancelled = false;
+
+    createApiClient()
+      .getApproval(approvalToken)
+      .then((result) => {
+        if (!cancelled) setApproval(result);
+      })
+      .catch((cause: unknown) => {
+        if (!cancelled) {
+          setLoadError(
+            cause instanceof Error ? cause.message : 'Error inesperado',
+          );
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [approvalToken]);
 
   const sendOtp = async () => {
     setBusy(true);
@@ -108,7 +117,11 @@ export const OtpGateView = ({ approvalToken, onVerified }: Props) => {
   }
 
   return (
-    <form onSubmit={verify}>
+    <form
+      onSubmit={(event) => {
+        void verify(event);
+      }}
+    >
       <Card>
         <CardHeader>
           <CardTitle>Verificacion en dos pasos</CardTitle>

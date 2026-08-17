@@ -47,8 +47,23 @@ export const MailboxApp = () => {
   }, []);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    let cancelled = false;
+
+    createApiClient()
+      .listMockMails()
+      .then((result) => {
+        if (!cancelled) setMails(result);
+      })
+      .catch((cause: unknown) => {
+        if (!cancelled) {
+          setError(cause instanceof Error ? cause.message : 'Error inesperado');
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   return (
     <div className="space-y-4">

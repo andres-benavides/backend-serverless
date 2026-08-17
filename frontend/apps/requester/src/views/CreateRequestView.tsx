@@ -71,7 +71,11 @@ export const CreateRequestView = () => {
   };
 
   return (
-    <form onSubmit={submit}>
+    <form
+      onSubmit={(event) => {
+        void submit(event);
+      }}
+    >
       <Card>
         <CardHeader>
           <CardTitle>Nueva solicitud de compra</CardTitle>

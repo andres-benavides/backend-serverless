@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Alert,
@@ -29,19 +29,24 @@ export const DashboardView = () => {
   );
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setError(null);
-
-    try {
-      setRequests(await createApiClient().listRequests(REQUESTER_ID));
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Error inesperado');
-    }
-  }, []);
-
   useEffect(() => {
-    void load();
-  }, [load]);
+    let cancelled = false;
+
+    createApiClient()
+      .listRequests(REQUESTER_ID)
+      .then((result) => {
+        if (!cancelled) setRequests(result);
+      })
+      .catch((cause: unknown) => {
+        if (!cancelled) {
+          setError(cause instanceof Error ? cause.message : 'Error inesperado');
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   return (
     <Card>

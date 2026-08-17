@@ -97,6 +97,7 @@ comun de Module Federation en desarrollo.
 npm test
 npm run test:coverage
 npm run typecheck
+npm run lint
 ```
 
 ```
@@ -105,6 +106,22 @@ Cobertura: 89% sentencias | 87% ramas | 94% funciones
 ```
 
 El umbral esta en 60%, el minimo que exige la prueba tecnica.
+
+### Linting
+
+ESLint corre con `typescript-eslint` type-checked y `eslint-plugin-react-hooks`. Este ultimo no
+es cosmetico: detecta errores que TypeScript no ve. En su primera ejecucion encontro seis
+problemas reales en este codigo.
+
+`set-state-in-effect` marco cuatro vistas que llamaban `setState` de forma sincrona dentro de
+un `useEffect`, provocando renders en cascada. Al corregirlas se aprovecho para cancelar la
+peticion cuando el componente se desmonta, algo que faltaba.
+
+`no-misused-promises` marco dos formularios que pasaban una funcion `async` directamente a
+`onSubmit`, dejando cualquier rechazo sin manejar.
+
+Los componentes generados por shadcn (`packages/ui/src/components/ui/`) estan excluidos: son
+codigo de terceros que se actualiza con el CLI.
 
 Las pruebas usan Testing Library con `fetch` mockeado, asi que **no necesitan el backend
 levantado**. Cubren los estados que suelen quedar sin probar: carga, vacio, error de red, error
