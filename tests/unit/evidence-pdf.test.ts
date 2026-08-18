@@ -1,10 +1,10 @@
-import { PDFDocument } from 'pdf-lib';
+import { PDFDocument, StandardFonts } from 'pdf-lib';
 import { describe, expect, it } from 'vitest';
 import type {
   ApproverItem,
   PurchaseRequestItem,
 } from '../../src/domain/purchase-request';
-import { buildEvidencePdf } from '../../src/shared/evidence-pdf';
+import { buildEvidencePdf, wrapText } from '../../src/shared/evidence-pdf';
 
 const requestId = 'req-1';
 
@@ -114,17 +114,33 @@ describe('buildEvidencePdf', () => {
     expect(bytes.length).toBeGreaterThan(500);
   });
 
-  it('tolerates long titles and descriptions without overflowing', async () => {
+  it('moves long titles and descriptions to continuation pages', async () => {
     const long: PurchaseRequestItem = {
       ...request,
-      title: 'T'.repeat(400),
-      description: 'D'.repeat(900),
+      title: 'T'.repeat(200),
+      description: 'D'.repeat(2000),
     };
 
     const bytes = await buildEvidencePdf(long, approvers, generatedAt);
     const parsed = await PDFDocument.load(bytes);
 
-    expect(parsed.getPageCount()).toBe(1);
+    expect(parsed.getPageCount()).toBeGreaterThan(1);
+  });
+
+  it('wraps every word without losing description content', async () => {
+    const document = await PDFDocument.create();
+    const font = await document.embedFont(StandardFonts.Helvetica);
+    const description =
+      'Primera linea con varias palabras\nSegunda linea con Supercalifragilisticoespialidoso';
+
+    const lines = wrapText(description, font, 10, 90);
+
+    expect(lines.every((line) => font.widthOfTextAtSize(line, 10) <= 90)).toBe(
+      true,
+    );
+    expect(lines.join('').replace(/\s+/g, '')).toBe(
+      description.replace(/\s+/g, ''),
+    );
   });
 
   it('reports the outcome from the signatures, not the transient status', async () => {

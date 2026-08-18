@@ -381,6 +381,9 @@ GET /api/requests/{id}/evidence
 Contenido del documento: titulo, descripcion, monto, fecha de creacion, solicitante y una tabla
 con los tres aprobadores, su rol, su estado y el timestamp de cada firma.
 
+Los campos extensos se ajustan al ancho disponible sin truncarse. Si la descripcion no cabe en
+la primera pagina, el documento crea paginas de continuacion y conserva todo el contenido.
+
 ### El bucket es privado
 
 El bucket bloquea todo acceso publico (`BlockPublicAcls`, `BlockPublicPolicy`,

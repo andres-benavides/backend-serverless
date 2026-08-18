@@ -1,4 +1,5 @@
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
+import type { PDFFont } from 'pdf-lib';
 import type {
   ApproverItem,
   PurchaseRequestItem,
@@ -7,6 +8,10 @@ import type {
 const PAGE_WIDTH = 595.28;
 const PAGE_HEIGHT = 841.89;
 const MARGIN = 56;
+const VALUE_X = MARGIN + 130;
+const VALUE_WIDTH = PAGE_WIDTH - MARGIN - VALUE_X;
+const BODY_FONT_SIZE = 10;
+const LINE_HEIGHT = 14;
 const INK = rgb(0.11, 0.13, 0.16);
 const MUTED = rgb(0.42, 0.45, 0.5);
 const RULE = rgb(0.85, 0.87, 0.9);
@@ -48,13 +53,79 @@ const signatureDate = (approver: ApproverItem): string => {
   return date ? formatDate(date) : '-';
 };
 
+const splitLongWord = (
+  word: string,
+  font: PDFFont,
+  size: number,
+  maxWidth: number,
+): string[] => {
+  const chunks: string[] = [];
+  let chunk = '';
+
+  for (const character of word) {
+    const candidate = `${chunk}${character}`;
+
+    if (chunk && font.widthOfTextAtSize(candidate, size) > maxWidth) {
+      chunks.push(chunk);
+      chunk = character;
+    } else {
+      chunk = candidate;
+    }
+  }
+
+  if (chunk) chunks.push(chunk);
+
+  return chunks;
+};
+
+export const wrapText = (
+  value: string,
+  font: PDFFont,
+  size: number,
+  maxWidth: number,
+): string[] => {
+  const lines: string[] = [];
+
+  for (const paragraph of value.split(/\r?\n/)) {
+    const words = paragraph.trim().split(/\s+/).filter(Boolean);
+
+    if (words.length === 0) {
+      lines.push('');
+      continue;
+    }
+
+    let line = '';
+
+    for (const word of words) {
+      const candidate = line ? `${line} ${word}` : word;
+
+      if (font.widthOfTextAtSize(candidate, size) <= maxWidth) {
+        line = candidate;
+        continue;
+      }
+
+      if (line) {
+        lines.push(line);
+      }
+
+      const chunks = splitLongWord(word, font, size, maxWidth);
+      lines.push(...chunks.slice(0, -1));
+      line = chunks.at(-1) ?? '';
+    }
+
+    if (line) lines.push(line);
+  }
+
+  return lines.length > 0 ? lines : [''];
+};
+
 export const buildEvidencePdf = async (
   request: PurchaseRequestItem,
   approvers: ApproverItem[],
   generatedAt: string,
 ): Promise<Uint8Array> => {
   const document = await PDFDocument.create();
-  const page = document.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+  let page = document.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
   const regular = await document.embedFont(StandardFonts.Helvetica);
   const bold = await document.embedFont(StandardFonts.HelveticaBold);
 
@@ -81,6 +152,21 @@ export const buildEvidencePdf = async (
     });
   };
 
+  const ensureSpace = (requiredHeight: number): boolean => {
+    if (y - requiredHeight >= MARGIN) return false;
+
+    page = document.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+    y = PAGE_HEIGHT - MARGIN;
+    text('Evidencia de aprobacion (continuacion)', 14, bold);
+    y -= 18;
+    text(`Solicitud ${request.requestId}`, 9, regular, MUTED);
+    y -= 14;
+    rule();
+    y -= 24;
+
+    return true;
+  };
+
   text('Evidencia de aprobacion', 20, bold);
   y -= 18;
   text(`Solicitud ${request.requestId}`, 10, regular, MUTED);
@@ -101,23 +187,37 @@ export const buildEvidencePdf = async (
   ];
 
   for (const [label, value] of fields) {
-    page.drawText(label, {
-      x: MARGIN,
-      y,
-      size: 9,
-      font: bold,
-      color: MUTED,
-    });
-    page.drawText(value.slice(0, 78), {
-      x: MARGIN + 130,
-      y,
-      size: 10,
-      font: regular,
-      color: INK,
-    });
-    y -= 18;
+    const lines = wrapText(value, regular, BODY_FONT_SIZE, VALUE_WIDTH);
+    let firstLine = true;
+
+    for (const line of lines) {
+      const continued = ensureSpace(LINE_HEIGHT);
+
+      if (firstLine || continued) {
+        page.drawText(continued && !firstLine ? `${label} (cont.)` : label, {
+          x: MARGIN,
+          y,
+          size: 9,
+          font: bold,
+          color: MUTED,
+        });
+      }
+
+      page.drawText(line, {
+        x: VALUE_X,
+        y,
+        size: BODY_FONT_SIZE,
+        font: regular,
+        color: INK,
+      });
+      y -= LINE_HEIGHT;
+      firstLine = false;
+    }
+
+    y -= 4;
   }
 
+  ensureSpace(150);
   y -= 12;
   rule();
   y -= 26;
