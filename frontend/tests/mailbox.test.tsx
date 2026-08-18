@@ -67,7 +67,7 @@ describe('MailboxApp', () => {
             mailId: 'mail-2',
             mailType: 'OTP',
             otp: '123456',
-            otpExpiresAt: '2026-08-17T02:03:00.000Z',
+            otpExpiresAt: new Date(Date.now() - 60_000).toISOString(),
           }),
         ],
       }),
@@ -78,6 +78,27 @@ describe('MailboxApp', () => {
     expect(await screen.findByText('123456')).toBeInTheDocument();
     expect(screen.getByText('Codigo')).toBeInTheDocument();
     expect(screen.getByText('Invitacion')).toBeInTheDocument();
+  });
+
+  it('marks an expired otp token with a destructive badge', async () => {
+    fetchMock.mockReturnValue(
+      jsonResponse(200, {
+        mails: [
+          mail({
+            mailType: 'OTP',
+            otp: '123456',
+            otpExpiresAt: new Date(Date.now() - 60_000).toISOString(),
+          }),
+        ],
+      }),
+    );
+
+    renderAt(<MailboxApp />);
+
+    const expiredBadge = await screen.findByText('Token vencido');
+
+    expect(expiredBadge).toHaveAttribute('data-variant', 'destructive');
+    expect(screen.queryByText(/^vence /)).not.toBeInTheDocument();
   });
 
   it('explains the empty inbox', async () => {

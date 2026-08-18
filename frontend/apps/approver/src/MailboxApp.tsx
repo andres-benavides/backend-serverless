@@ -32,15 +32,39 @@ const formatTime = (iso: string): string =>
     dateStyle: 'short',
   });
 
+const OtpExpiration = ({
+  expiresAt,
+  currentTime,
+}: {
+  expiresAt: string;
+  currentTime: number;
+}) => {
+  const expirationTime = new Date(expiresAt).getTime();
+  const expired =
+    Number.isFinite(expirationTime) && expirationTime <= currentTime;
+
+  if (expired) {
+    return <Badge variant="destructive">Token vencido</Badge>;
+  }
+
+  return (
+    <span className="text-xs text-muted-foreground">
+      vence {formatTime(expiresAt)}
+    </span>
+  );
+};
+
 export const MailboxApp = () => {
   const [mails, setMails] = useState<MockMail[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [currentTime, setCurrentTime] = useState(0);
 
   const load = useCallback(async () => {
     setError(null);
 
     try {
       setMails(await createApiClient().listMockMails());
+      setCurrentTime(Date.now());
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Error inesperado');
     }
@@ -52,7 +76,10 @@ export const MailboxApp = () => {
     createApiClient()
       .listMockMails()
       .then((result) => {
-        if (!cancelled) setMails(result);
+        if (!cancelled) {
+          setMails(result);
+          setCurrentTime(Date.now());
+        }
       })
       .catch((cause: unknown) => {
         if (!cancelled) {
@@ -65,14 +92,39 @@ export const MailboxApp = () => {
     };
   }, []);
 
+  useEffect(() => {
+    const nextExpiration = mails
+      ?.map((mail) =>
+        mail.otpExpiresAt === undefined
+          ? Number.NaN
+          : new Date(mail.otpExpiresAt).getTime(),
+      )
+      .filter(
+        (expirationTime) =>
+          Number.isFinite(expirationTime) && expirationTime > currentTime,
+      )
+      .sort((left, right) => left - right)[0];
+
+    if (nextExpiration === undefined) return;
+
+    const timeout = window.setTimeout(
+      () => {
+        setCurrentTime(Date.now());
+      },
+      nextExpiration - currentTime + 1,
+    );
+
+    return () => {
+      window.clearTimeout(timeout);
+    };
+  }, [currentTime, mails]);
+
   return (
     <div className="space-y-4">
       <Alert>
         <AlertTitle>Bandeja de demostracion</AlertTitle>
         <AlertDescription>
-          Reemplaza al correo real. Expone el token de aprobacion y el OTP, que
-          en produccion solo llegarian al buzon del aprobador. Debe eliminarse o
-          protegerse antes de cualquier uso real.
+          Bandeja para ver los codigos y tokens y poder hacer pruebas.
         </AlertDescription>
       </Alert>
 
@@ -151,9 +203,10 @@ export const MailboxApp = () => {
                 )}
 
                 {mail.otpExpiresAt !== undefined && (
-                  <span className="text-xs text-muted-foreground">
-                    vence {formatTime(mail.otpExpiresAt)}
-                  </span>
+                  <OtpExpiration
+                    expiresAt={mail.otpExpiresAt}
+                    currentTime={currentTime}
+                  />
                 )}
               </div>
             </div>
