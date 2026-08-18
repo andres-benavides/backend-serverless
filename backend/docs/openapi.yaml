@@ -24,7 +24,7 @@ info:
     confia. En produccion iria detras de un authorizer de API Gateway (Cognito o JWT).
 
 servers:
-  - url: https://5oxai8sky9.execute-api.us-east-1.amazonaws.com/dev
+  - url: https://t1nma1q8f3.execute-api.us-east-1.amazonaws.com/dev
     description: Entorno de pruebas
 
 tags:
@@ -170,6 +170,53 @@ paths:
         ruta sin firma responde 403.
 
         La evidencia solo existe despues de que los tres aprobadores firman.
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+      responses:
+        '200':
+          description: URL prefirmada
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [evidence]
+                properties:
+                  evidence:
+                    type: object
+                    required: [url, expiresInSeconds]
+                    properties:
+                      url:
+                        type: string
+                        format: uri
+                      expiresInSeconds:
+                        type: integer
+                        example: 300
+        '400':
+          description: Falta el identificador
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: La evidencia aun no existe
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: The evidence is not available until the three approvers sign
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /api/solicitudes/{id}/evidencia.pdf:
+    get:
+      tags: [Evidencia]
+      summary: Obtener la URL del PDF mediante la ruta literal del enunciado
+      description: |
+        Alias compatible de `GET /api/requests/{id}/evidence`. Invoca la misma Lambda y devuelve
+        la misma URL prefirmada de S3 valida por 5 minutos.
       parameters:
         - $ref: '#/components/parameters/RequestId'
       responses:

@@ -49,16 +49,24 @@ describe('openapi document', () => {
     expect(spec.info.version).toBeTruthy();
   });
 
-  it('points at the deployed test environment', () => {
-    expect(spec.servers[0].url).toMatch(/^https:\/\//);
+  it('points at the current deployed test environment', () => {
+    expect(spec.servers[0].url).toBe(
+      'https://t1nma1q8f3.execute-api.us-east-1.amazonaws.com/dev',
+    );
   });
 
   it('documents every route exposed by the sam template', () => {
     expect(routesFromSpec()).toEqual(routesFromTemplate());
   });
 
-  it('documents nine routes', () => {
-    expect(routesFromTemplate()).toHaveLength(9);
+  it('documents ten routes', () => {
+    expect(routesFromTemplate()).toHaveLength(10);
+  });
+
+  it('documents the literal evidence alias from the challenge', () => {
+    expect(routesFromTemplate()).toContain(
+      'GET /api/solicitudes/{id}/evidencia.pdf',
+    );
   });
 
   it('gives every operation a summary and responses', () => {

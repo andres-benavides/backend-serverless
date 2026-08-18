@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { ApiClient, ApiError } from '@amm/api';
+import { ApiClient, ApiError, DEFAULT_API_BASE_URL } from '@amm/api';
 import { jsonResponse, mockFetch } from './helpers';
 
 const client = new ApiClient('https://api.test');
@@ -12,6 +12,12 @@ const lastCall = () =>
 describe('ApiClient', () => {
   beforeEach(() => {
     fetchMock = mockFetch();
+  });
+
+  it('uses the current deployed API as its default', () => {
+    expect(DEFAULT_API_BASE_URL).toBe(
+      'https://t1nma1q8f3.execute-api.us-east-1.amazonaws.com/dev',
+    );
   });
 
   it('creates a request with a json body', async () => {

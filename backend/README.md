@@ -1,15 +1,15 @@
 # AMM Purchase Approvals — Backend
 
 Flujo de aprobaciones de compra con firmas digitales concatenadas, resuelto con una arquitectura
-serverless en AWS. Prueba tecnica para perfil fullstack senior.
+sin servidores en AWS. Prueba tecnica para perfil senior de desarrollo full stack.
 
 ## URLs de prueba
 
 |                    |                                                                      |
 | ------------------ | -------------------------------------------------------------------- |
-| **Aplicacion**     | https://d2jbn2huy2ajh.cloudfront.net                                 |
-| **API**            | https://5oxai8sky9.execute-api.us-east-1.amazonaws.com/dev           |
-| **Buzon simulado** | https://5oxai8sky9.execute-api.us-east-1.amazonaws.com/dev/mock-mail |
+| **Aplicacion**     | https://dv25eqg0ezsqr.cloudfront.net                                 |
+| **API**            | https://t1nma1q8f3.execute-api.us-east-1.amazonaws.com/dev           |
+| **Buzon simulado** | https://t1nma1q8f3.execute-api.us-east-1.amazonaws.com/dev/mock-mail |
 
 Para recorrer el flujo completo sin salir del navegador: crea una solicitud, abre **Bandeja**, y
 desde ahi entra a la aprobacion con su codigo OTP a la vista.
@@ -17,23 +17,20 @@ desde ahi entra a la aprobacion con su codigo OTP a la vista.
 ## Que hay implementado
 
 Una solicitud se crea con tres aprobadores. Una maquina de estados de Step Functions los activa
-**en orden**: el aprobador 2 no puede actuar hasta que el 1 firme. Cada uno recibe un link con su
+**en orden**: el aprobador 2 no puede actuar hasta que el 1 firme. Cada uno recibe un enlace con su
 token, valida un OTP de 6 digitos vigente 3 minutos, y decide. Al firmar el tercero se genera un
 PDF de evidencia que se descarga con una URL prefirmada.
 
 | Componente   | Tecnologia                                               |
 | ------------ | -------------------------------------------------------- |
 | API REST     | API Gateway + Lambda (TypeScript, Node 22)               |
-| Persistencia | DynamoDB single-table con GSI1 y GSI2                    |
+| Persistencia | DynamoDB con tabla unica, GSI1 y GSI2                    |
 | Orquestacion | Step Functions Standard con `waitForTaskToken`           |
-| Evidencia    | `pdf-lib` + S3 privado con presigned URL                 |
+| Evidencia    | `pdf-lib` + S3 privado con URL prefirmada                |
 | Frontend     | React 18 + micro-frontends con webpack Module Federation |
 | IaC          | AWS SAM / CloudFormation                                 |
 
-```
-Backend   240 pruebas   97% cobertura
-Frontend   50 pruebas   89% cobertura
-```
+La cobertura de sentencias actual es de 97.6% en el backend y 88.62% en el frontend.
 
 El frontend vive en [`../frontend/`](../frontend/) y tiene su propio README.
 
@@ -56,20 +53,26 @@ sam validate
 sam build
 ```
 
-## Assumptions
+## Supuestos
 
-- Authentication is not specified by the challenge, so requester identity is mocked in this first increment.
-- Approval order is sequential, interpreting "firmas concatenadas" as ordered approvals.
-- The approval token is generated at request creation but never returned by the normal request-detail endpoint.
+- La prueba no especifica autenticacion, por lo que la identidad del solicitante se simula y se
+  confia desde el cliente. En produccion se obtendria mediante un API Gateway Authorizer con
+  Cognito o JWT.
+- El orden de aprobacion es secuencial, interpretando "firmas concatenadas" como aprobaciones
+  ordenadas.
+- El token de aprobacion se genera al crear la solicitud, pero nunca se devuelve desde la ruta
+  normal de detalle.
 
-## Endpoints
+## Rutas de la API
 
-| Metodo | Ruta                             | Descripcion                                                  |
-| ------ | -------------------------------- | ------------------------------------------------------------ |
-| POST   | `/api/requests`                  | Crea la solicitud junto a sus 3 aprobadores de forma atomica |
-| GET    | `/api/requests/{id}`             | Detalle de la solicitud y estado de cada aprobador           |
-| GET    | `/api/requests?requesterId=`     | Solicitudes de un solicitante, via Query sobre GSI1          |
-| GET    | `/api/approvals/{approvalToken}` | Estado minimo de una aprobacion, via Query sobre GSI2        |
+| Metodo | Ruta                                  | Descripcion                                                  |
+| ------ | ------------------------------------- | ------------------------------------------------------------ |
+| POST   | `/api/requests`                       | Crea la solicitud junto a sus 3 aprobadores de forma atomica |
+| GET    | `/api/requests/{id}`                  | Detalle de la solicitud y estado de cada aprobador           |
+| GET    | `/api/requests?requesterId=`          | Solicitudes de un solicitante, via Query sobre GSI1          |
+| GET    | `/api/approvals/{approvalToken}`      | Estado minimo de una aprobacion, via Query sobre GSI2        |
+| GET    | `/api/requests/{id}/evidence`         | URL prefirmada del PDF de evidencia                          |
+| GET    | `/api/solicitudes/{id}/evidencia.pdf` | Alias literal para obtener la misma evidencia                |
 
 ### GET /api/approvals/{approvalToken}
 
@@ -113,7 +116,7 @@ puede actuar hasta que el 1 firme. La orquestacion vive en una maquina de estado
 AWS Step Functions **Standard**.
 
 ```
-ActivateApprover1 -> espera callback -> APPROVED?
+ActivateApprover1 -> espera decision -> APPROVED?
    |- si -> ActivateApprover2 -> espera -> APPROVED?
    |          |- si -> ActivateApprover3 -> espera -> APPROVED?
    |          |          |- si -> GenerateEvidence -> CompleteRequest
@@ -127,21 +130,21 @@ Definicion en `statemachine/approval-flow.asl.json`.
 ### Por que Standard y no Express
 
 Las esperas son de interaccion humana: una aprobacion puede tardar minutos, horas o dias.
-Express tiene un limite de 5 minutos de ejecucion y no soporta el patron de callback. Standard
+Express tiene un limite de 5 minutos de ejecucion y no soporta el patron de devolucion de llamada. Standard
 permite ejecuciones de hasta un ano y `waitForTaskToken`.
 
-### Task token
+### Token de tarea
 
 Cada estado `ActivateApproverN` invoca la Lambda con
 `arn:aws:states:::lambda:invoke.waitForTaskToken`. La Lambda guarda el `taskToken` contra el
-aprobador y termina; la ejecucion queda esperando el callback.
+aprobador y termina; la ejecucion queda esperando la respuesta.
 
 Hay **dos tokens distintos** y no deben confundirse:
 
-| Token           | Alcance                                     | Se expone al navegador |
-| --------------- | ------------------------------------------- | ---------------------- |
-| `approvalToken` | Publico, identifica al aprobador en su link | Si                     |
-| `taskToken`     | Interno de Step Functions                   | **Nunca**              |
+| Token           | Alcance                                       | Se expone al navegador |
+| --------------- | --------------------------------------------- | ---------------------- |
+| `approvalToken` | Publico, identifica al aprobador en su enlace | Si                     |
+| `taskToken`     | Interno de Step Functions                     | **Nunca**              |
 
 El `taskToken` y el `executionArn` estan excluidos de todas las respuestas de la API.
 
@@ -152,7 +155,7 @@ solicitud en un solo `TransactWriteItems`, ambos con `ConditionExpression` sobre
 `status = PENDING`. Si la solicitud ya fue rechazada o completada, la activacion falla en vez
 de dejar el modelo inconsistente.
 
-`updateRequestStatus` tambien es condicional sobre `PENDING`, asi que un callback repetido no
+`updateRequestStatus` tambien es condicional sobre `PENDING`, asi que una respuesta repetida no
 puede pasar de `REJECTED` a `COMPLETED` ni al reves.
 
 ### Doble escritura conocida
@@ -161,7 +164,7 @@ puede pasar de `REJECTED` a `COMPLETED` ni al reves.
 DynamoDB e inicia la ejecucion en Step Functions. Si el `StartExecution` falla, la solicitud
 queda persistida en `PENDING` sin `executionArn` y el endpoint responde 500.
 
-Se eligio propagar el error en vez de silenciarlo, porque una solicitud sin workflow nunca
+Se eligio propagar el error en vez de silenciarlo, porque una solicitud sin flujo nunca
 avanzaria y quedaria invisible. Las solicitudes en ese estado son identificables justamente
 por no tener `executionArn`.
 
@@ -175,14 +178,14 @@ mismo id no crea una segunda ejecucion.
 ### Permiso amplio justificado
 
 El rol de la maquina de estados incluye acciones `logs:*LogDelivery` sobre `Resource: '*'`.
-Es un requisito de AWS: el logging de Step Functions no admite ARNs concretos en esas
+Es un requisito de AWS: el registro de Step Functions no admite ARNs concretos en esas
 acciones. Sin ellas el despliegue falla con
 `The state machine IAM Role is not authorized to access the Log Destination`.
 
-## Mock Mail
+## Correo simulado
 
 El PDF permite simular el envio de correo. Cuando Step Functions activa a un aprobador, la
-Lambda `activate-approver` graba un correo simulado con su link de aprobacion.
+Lambda `activate-approver` graba un correo simulado con su enlace de aprobacion.
 
 ```http
 GET /mock-mail
@@ -199,14 +202,14 @@ GET /mock-mail?limit=10
       "role": "Manager",
       "order": 1,
       "subject": "Aprobacion pendiente de la solicitud ...",
-      "approvalLink": "https://d2jbn2huy2ajh.cloudfront.net/approve?solicitud_id=...&approver_token=...",
+      "approvalLink": "https://dv25eqg0ezsqr.cloudfront.net/approve?solicitud_id=...&approver_token=...",
       "sentAt": "2026-08-17T01:23:06.179Z"
     }
   ]
 }
 ```
 
-El formato del link sigue el ejemplo del enunciado.
+El formato del enlace sigue el ejemplo del enunciado.
 
 > **Endpoint de demostracion.** `/mock-mail` expone `approvalToken`, que es lo que en
 > produccion llegaria unicamente al buzon del aprobador. Existe para poder probar el flujo sin
@@ -319,13 +322,13 @@ en una transaccion. El orden elegido es:
 ```
 
 DynamoDB va primero porque es la fuente de verdad: si el proceso muere entre 1 y 2, la firma
-quedo registrada pero el workflow sigue esperando. Ese estado es **detectable y reparable**,
+quedo registrada pero el flujo sigue esperando. Ese estado es **detectable y reparable**,
 porque el aprobador tiene `status = SIGNED` sin `callbackSentAt`.
 
-Al reintentar la misma decision, el servicio detecta ese estado y **reenvia solo el callback**,
+Al reintentar la misma decision, el servicio detecta ese estado y **reenvia solo la confirmacion a Step Functions**,
 sin volver a escribir la firma. Reintentar es seguro.
 
-El orden inverso seria peor: notificar primero dejaria el workflow avanzando sobre una firma
+El orden inverso seria peor: notificar primero dejaria el flujo avanzando sobre una firma
 que nunca se persistio, y eso no se puede reparar.
 
 ### Proteccion contra doble firma
@@ -351,7 +354,7 @@ modo que el reintento converge.
 | Decision valida              | 200 con `status` y `decidedAt` |
 | OTP sin verificar            | 409                            |
 | Ya procesada y notificada    | 409                            |
-| Procesada pero sin notificar | 200, reenvia el callback       |
+| Procesada pero sin notificar | 200, reenvia la confirmacion   |
 | Token inexistente            | 404                            |
 | `decision` invalida          | 400                            |
 
@@ -367,6 +370,7 @@ que arma el PDF con `pdf-lib` y lo sube a S3 antes de marcar la solicitud como `
 
 ```http
 GET /api/requests/{id}/evidence
+GET /api/solicitudes/{id}/evidencia.pdf
 ```
 
 ```json
@@ -389,7 +393,7 @@ la primera pagina, el documento crea paginas de continuacion y conserva todo el 
 El bucket bloquea todo acceso publico (`BlockPublicAcls`, `BlockPublicPolicy`,
 `IgnorePublicAcls`, `RestrictPublicBuckets`), cifra en reposo con AES256 y tiene versionado.
 
-La descarga se hace con una **presigned URL de 5 minutos**. Verificado contra AWS: la URL
+La descarga se hace con una **URL prefirmada de 5 minutos**. Verificado contra AWS: la URL
 firmada devuelve 200 con `application/pdf`, y la misma ruta sin firma devuelve **403**.
 
 DynamoDB solo guarda `evidenceKey` (`requests/{requestId}/evidence.pdf`), nunca el binario.
@@ -399,11 +403,11 @@ DynamoDB solo guarda `evidenceKey` (`requests/{requestId}/evidence.pdf`), nunca 
 El PDF se genera **antes** de que `CompleteRequest` marque la solicitud como `COMPLETED`, asi
 que leer `request.status` en ese momento mostraria `PENDING` en el documento. El campo
 `Resultado` se calcula desde el estado de los aprobadores, que es lo que la evidencia realmente
-certifica, y no depende del orden de escritura del workflow.
+certifica, y no depende del orden de escritura del flujo.
 
 ### Reintentos
 
-El estado `GenerateEvidence` reintenta hasta 3 veces con backoff exponencial. La generacion es
+El estado `GenerateEvidence` reintenta hasta 3 veces con espera exponencial. La generacion es
 idempotente: la clave en S3 es determinista, asi que un reintento sobrescribe el mismo objeto.
 
 | Caso                    | Respuesta              |
@@ -412,17 +416,16 @@ idempotente: la clave en S3 es determinista, asi que un reintento sobrescribe el
 | Aun sin las tres firmas | 409                    |
 | Solicitud inexistente   | 404                    |
 
-### Diferencia con el enunciado
+### Compatibilidad con el enunciado
 
-El PDF de la prueba nombra el endpoint como `/api/solicitudes/{id}/evidencia.pdf`. Se
-implemento como `/api/requests/{id}/evidence` por coherencia con el resto de la API, que esta
-en ingles, y porque devuelve una URL firmada en JSON en lugar del binario. Si se prefiere la
-ruta literal del enunciado, es solo anadir un evento mas a la misma Lambda.
+La ruta principal es `/api/requests/{id}/evidence`, coherente con el resto de la API. Tambien se
+expone `/api/solicitudes/{id}/evidencia.pdf`, la ruta literal solicitada por el enunciado. Ambas
+invocan la misma Lambda y devuelven la misma URL prefirmada en JSON; no existe logica duplicada.
 
 ## Documentacion de la API
 
-La especificacion OpenAPI 3.0 esta en [`docs/openapi.yaml`](docs/openapi.yaml) y cubre los
-nueve endpoints con sus cuerpos, respuestas, codigos HTTP, ejemplos y errores.
+La especificacion OpenAPI 3.0 esta en [`docs/openapi.yaml`](docs/openapi.yaml) y cubre las diez
+operaciones con sus cuerpos, respuestas, codigos HTTP, ejemplos y errores.
 
 Para verla renderizada:
 
@@ -444,10 +447,10 @@ Todo el recorrido se puede ejecutar con `curl` contra el entorno desplegado. `BA
 del stage.
 
 ```bash
-BASE=https://5oxai8sky9.execute-api.us-east-1.amazonaws.com/dev
+BASE=https://t1nma1q8f3.execute-api.us-east-1.amazonaws.com/dev
 ```
 
-**1. Crear la solicitud.** Arranca el workflow y activa al primer aprobador.
+**1. Crear la solicitud.** Arranca el flujo y activa al primer aprobador.
 
 ```bash
 curl -X POST "$BASE/api/requests" \
@@ -484,7 +487,7 @@ curl -X POST "$BASE/api/approvals/<APPROVAL_TOKEN>/otp/verify" \
   -d '{"otp":"<CODIGO>"}'
 ```
 
-**6. Decidir.** Al firmar, el workflow activa al siguiente aprobador y emite su correo.
+**6. Decidir.** Al firmar, el flujo activa al siguiente aprobador y emite su correo.
 
 ```bash
 curl -X POST "$BASE/api/approvals/<APPROVAL_TOKEN>/decision" \
@@ -498,6 +501,8 @@ Repetir los pasos 2 a 6 para los aprobadores 2 y 3.
 
 ```bash
 curl "$BASE/api/requests/<REQUEST_ID>/evidence"
+# Alias compatible con la ruta literal del enunciado:
+curl "$BASE/api/solicitudes/<REQUEST_ID>/evidencia.pdf"
 curl -o evidencia.pdf "<URL_PREFIRMADA>"
 ```
 
@@ -552,9 +557,9 @@ sam deploy \
 ```
 
 `AppBaseUrl` es obligatorio y debe ser la URL HTTPS del frontend. No tiene un valor por
-defecto deliberadamente: asi un despliegue nuevo no puede emitir correos con un dominio de
-ejemplo. El entorno de prueba ya queda configurado en `samconfig.toml` con su distribucion de
-CloudFront.
+defecto deliberadamente y tampoco se fija en `samconfig.toml`: cada despliegue debe recibirlo
+mediante `--parameter-overrides`. Asi una cuenta nueva no puede heredar accidentalmente la
+distribucion de otro entorno.
 
 El stack se llama `amm-purchase-approvals` y se despliega en `us-east-1`. Verifica siempre
 con `sts get-caller-identity` que el perfil apunta a la cuenta correcta antes de desplegar.
@@ -578,14 +583,14 @@ curl -X POST http://127.0.0.1:3000/api/requests \
 curl 'http://127.0.0.1:3000/api/requests?requesterId=user-001'
 ```
 
-The list endpoint returns request metadata ordered from newest to oldest. It does not return
-DynamoDB keys or approver tokens. `requesterId` is required; a requester without requests
-receives `{ "requests": [] }`.
+La ruta de listado devuelve los metadatos de las solicitudes desde la mas reciente hasta la
+mas antigua. No devuelve claves de DynamoDB ni tokens de aprobadores. `requesterId` es
+obligatorio; un solicitante sin solicitudes recibe `{ "requests": [] }`.
 
 ### Puerto
 
 El contenedor siempre escucha en el 8000 dentro de la red `sam-local`, que es lo que usa la
-Lambda. El puerto publicado en el host es configurable si el 8000 ya esta ocupado:
+Lambda. El puerto publicado en el equipo es configurable si el 8000 ya esta ocupado:
 
 ```bash
 DYNAMODB_LOCAL_PORT=8123 npm run local:up
@@ -594,8 +599,8 @@ DYNAMODB_ENDPOINT=http://localhost:8123 npm run test:integration
 
 ### Detalles que no son obvios
 
-`-sharedDb` es obligatorio: sin esa bandera DynamoDB Local particiona los datos por access
-key, y la tabla creada desde el host no seria visible para el contenedor de Lambda, que usa
+`-sharedDb` es obligatorio: sin esa bandera DynamoDB Local particiona los datos por clave de
+acceso, y la tabla creada desde el equipo no seria visible para el contenedor de Lambda, que usa
 credenciales distintas.
 
 `-inMemory` significa que los datos se pierden al bajar el stack. `docker compose up` vuelve
@@ -614,10 +619,8 @@ npm run test:coverage # con reporte de cobertura
 npm run test:integration
 ```
 
-```
-228 pruebas | 26 archivos
-Cobertura: 97% sentencias | 89% ramas | 98% funciones
-```
+La cobertura de sentencias actual es de 97.6%. La cantidad total de pruebas puede variar porque
+las pruebas de integracion se omiten automaticamente cuando DynamoDB Local no esta disponible.
 
 El umbral configurado en `vitest.config.mts` es 85% (sentencias, lineas y funciones) y 80% en
 ramas, por encima del 60% que exige la prueba. Por debajo de eso el comando falla.

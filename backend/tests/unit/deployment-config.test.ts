@@ -13,13 +13,11 @@ describe('deployment configuration', () => {
     expect(appBaseUrlParameter).not.toContain('Default:');
   });
 
-  it('configures the deployed CloudFront URL in samconfig', () => {
+  it('does not pin an application URL in samconfig', () => {
     const samconfig = readFileSync('samconfig.toml', 'utf8');
 
-    expect(samconfig).toContain(
-      'AppBaseUrl=https://d2jbn2huy2ajh.cloudfront.net',
-    );
-    expect(samconfig).not.toContain('dominio.com');
+    expect(samconfig).not.toContain('AppBaseUrl=');
+    expect(samconfig).not.toContain('cloudfront.net');
   });
 
   it('configures the local frontend URL for SAM local', () => {

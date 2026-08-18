@@ -7,7 +7,7 @@ declare global {
 }
 
 export const DEFAULT_API_BASE_URL =
-  'https://5oxai8sky9.execute-api.us-east-1.amazonaws.com/dev';
+  'https://t1nma1q8f3.execute-api.us-east-1.amazonaws.com/dev';
 
 export const apiBaseUrl = (): string =>
   (typeof window !== 'undefined' && window.__AMM_API_BASE_URL__) ||
