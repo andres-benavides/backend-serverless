@@ -5,8 +5,9 @@ Description: AMM Purchase Approval technical challenge backend
 Parameters:
   AppBaseUrl:
     Type: String
-    Default: https://dominio.com
     Description: Base URL used to build the approval links sent by mail
+    AllowedPattern: '^https://[^/]+(?:/.*)?$'
+    ConstraintDescription: Must be an HTTPS URL, for example https://app.example.com
 
 Globals:
   Function:

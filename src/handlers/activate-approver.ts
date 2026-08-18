@@ -7,7 +7,8 @@ import { ActivateApproverService } from '../services/activate-approver.service';
 const tableName = process.env.TABLE_NAME;
 if (!tableName) throw new Error('TABLE_NAME is required');
 
-const appBaseUrl = process.env.APP_BASE_URL ?? 'https://dominio.com';
+const appBaseUrl = process.env.APP_BASE_URL;
+if (!appBaseUrl) throw new Error('APP_BASE_URL is required');
 
 const repository = new PurchaseRequestRepository(tableName);
 const mailSender = new MockMailSender(

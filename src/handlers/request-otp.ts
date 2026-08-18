@@ -10,7 +10,8 @@ import { jsonResponse } from '../shared/http';
 const tableName = process.env.TABLE_NAME;
 if (!tableName) throw new Error('TABLE_NAME is required');
 
-const appBaseUrl = process.env.APP_BASE_URL ?? 'https://dominio.com';
+const appBaseUrl = process.env.APP_BASE_URL;
+if (!appBaseUrl) throw new Error('APP_BASE_URL is required');
 
 const service = new RequestOtpService(
   new PurchaseRequestRepository(tableName),

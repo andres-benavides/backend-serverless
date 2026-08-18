@@ -199,7 +199,7 @@ GET /mock-mail?limit=10
       "role": "Manager",
       "order": 1,
       "subject": "Aprobacion pendiente de la solicitud ...",
-      "approvalLink": "https://dominio.com/approve?solicitud_id=...&approver_token=...",
+      "approvalLink": "https://d2jbn2huy2ajh.cloudfront.net/approve?solicitud_id=...&approver_token=...",
       "sentAt": "2026-08-17T01:23:06.179Z"
     }
   ]
@@ -541,8 +541,17 @@ aws sts get-caller-identity --profile <perfil>
 
 ```bash
 sam build
-sam deploy --profile <perfil> --region us-east-1
+sam deploy \
+  --profile <perfil> \
+  --region us-east-1 \
+  --parameter-overrides \
+  AppBaseUrl=https://<distribucion>.cloudfront.net
 ```
+
+`AppBaseUrl` es obligatorio y debe ser la URL HTTPS del frontend. No tiene un valor por
+defecto deliberadamente: asi un despliegue nuevo no puede emitir correos con un dominio de
+ejemplo. El entorno de prueba ya queda configurado en `samconfig.toml` con su distribucion de
+CloudFront.
 
 El stack se llama `amm-purchase-approvals` y se despliega en `us-east-1`. Verifica siempre
 con `sts get-caller-identity` que el perfil apunta a la cuenta correcta antes de desplegar.
